@@ -1,0 +1,38 @@
+# Rust / Cargo
+/target/
+/.cargo/
+/Cargo.lock
+
+# IDE & Editor specific
+/.vscode/
+/.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# App Data
+dockstack.log
+default_config.toml
+*.db
+*.sqlite
+/data/
+
+# SSL / Certs (Never commit secrets!)
+*.key
+*.pem
+*.crt
+/ssl/
+
+# Build artifacts
+*.rlib
+*.so
+*.dylib
+*.dll
+*.o
+*.a
+
+# Project specific
+/docker-compose*.yml
