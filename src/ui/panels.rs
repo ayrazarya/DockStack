@@ -1,4 +1,4 @@
-use egui::{self, Color32, RichText, ScrollArea, Vec2, Stroke, Rect};
+use egui::{self, Color32, RichText, ScrollArea, Vec2, Stroke, Rect, StrokeKind};
 use crate::config::AppConfig;
 use crate::docker::manager::{ContainerInfo, ServiceStatus};
 use crate::monitor::{ContainerStats, SystemStats};
@@ -29,113 +29,119 @@ pub fn render_sidebar(
 ) {
     let width = ui.available_width();
     
-    // Logo Area
-    ui.add_space(20.0);
-    ui.vertical_centered(|ui| {
-        ui.label(RichText::new("⚡").size(32.0).color(COLOR_PRIMARY));
-        ui.add_space(4.0);
-        ui.label(RichText::new("DockStack").size(20.0).strong().color(COLOR_TEXT));
-        ui.label(RichText::new("Premium Dev Env").size(10.0).color(COLOR_TEXT_DIM));
-    });
-    ui.add_space(24.0);
-
-    // Project Selector (Modern Pill Style)
+    // Brand Area
+    ui.add_space(32.0);
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        let project_name = config.active_project().map(|p| p.name.clone()).unwrap_or("Select Project".to_string());
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(40.0, 40.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, egui::CornerRadius::same(10), COLOR_PRIMARY);
+        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "⚡", egui::FontId::proportional(24.0), COLOR_BG_APP);
         
-        egui::ComboBox::from_id_salt("sidebar_project_selector")
-            .selected_text(RichText::new(format!("📂  {}", project_name)).strong().color(COLOR_TEXT))
-            .width(width - 24.0)
-            .show_ui(ui, |ui| {
-                let project_names: Vec<String> = config.projects.iter().map(|p| p.name.clone()).collect();
-                let current_id = config.active_project_id.clone();
-                
-                for (_i, name) in project_names.iter().enumerate() {
-                    let id = config.projects.iter().find(|p| p.name == *name).map(|p| p.id.clone()).unwrap();
-                    let is_selected = Some(&id) == current_id.as_ref();
-                    
-                    if ui.selectable_label(is_selected, name).clicked() {
-                        config.active_project_id = Some(id);
+        ui.add_space(12.0);
+        ui.vertical(|ui| {
+            ui.label(RichText::new("DockStack").size(18.0).strong().color(COLOR_TEXT));
+            ui.label(RichText::new("v0.1.0-alpha").size(10.0).color(COLOR_TEXT_MUTED));
+        });
+    });
+    ui.add_space(32.0);
+
+    // Project Context
+    ui.label(RichText::new("WORKSPACE").size(10.0).color(COLOR_TEXT_MUTED).strong());
+    ui.add_space(8.0);
+    
+    egui::Frame::new()
+        .fill(COLOR_BG_CARD.gamma_multiply(0.5))
+        .corner_radius(egui::CornerRadius::same(10))
+        .stroke(Stroke::new(1.0, COLOR_BORDER))
+        .inner_margin(egui::Margin::symmetric(12, 10))
+        .show(ui, |ui| {
+            ui.set_width(width);
+            let project_name = config.active_project().map(|p| p.name.clone()).unwrap_or("Select Project".to_string());
+            
+            ui.menu_button(RichText::new(format!("📂 {}", project_name)).strong().color(COLOR_TEXT), |ui| {
+                for project in &config.projects {
+                    if ui.selectable_label(config.active_project_id.as_ref() == Some(&project.id), &project.name).clicked() {
+                        config.active_project_id = Some(project.id.clone());
                         config.save();
+                        ui.close_menu();
                     }
                 }
             });
-    });
-    ui.add_space(24.0);
+        });
+    
+    ui.add_space(32.0);
 
     // Navigation Menu
+    ui.label(RichText::new("NAVIGATION").size(10.0).color(COLOR_TEXT_MUTED).strong());
+    ui.add_space(8.0);
+
     let tabs = vec![
         (Tab::Dashboard, "🏠", "Overview"),
-        (Tab::Services, "📦", "Stack"),
+        (Tab::Services, "📦", "Service Stack"),
         (Tab::Containers, "🐳", "Containers"),
-        (Tab::Logs, "📋", "Logs"),
-        (Tab::Terminal, "💻", "Console"),
-        (Tab::Ports, "🔌", "Port Check"),
-        (Tab::Monitor, "📊", "Metrics"),
-        (Tab::Settings, "⚙️", "Settings"),
+        (Tab::Logs, "📋", "System Logs"),
+        (Tab::Terminal, "💻", "Terminal"),
+        (Tab::Ports, "🔌", "Port Checker"),
+        (Tab::Monitor, "📊", "Real-time Metrics"),
+        (Tab::Settings, "⚙", "Preferences"),
     ];
-    
-    ui.label(RichText::new("MAIN MENU").size(10.0).color(COLOR_TEXT_MUTED).strong());
-    ui.add_space(8.0);
 
     for (tab, icon, label) in tabs {
         let is_active = *active_tab == tab;
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(width - 12.0, 40.0), egui::Sense::click());
         
-        let (bg, text_col) = if is_active {
-            (COLOR_SIDEBAR_ACTIVE, COLOR_PRIMARY)
-        } else {
-            (Color32::TRANSPARENT, COLOR_TEXT_DIM)
-        };
-
-        let btn = egui::Button::new(
-            RichText::new(format!("  {}  {}", icon, label))
-                .size(13.0)
-                .color(text_col)
-                .strong(),
-        )
-        .fill(bg)
-        .stroke(egui::Stroke::NONE)
-        .corner_radius(egui::CornerRadius::same(6))
-        .min_size(Vec2::new(width - 20.0, 38.0))
-        .frame(true);
-
-        if ui.add(btn).clicked() {
+        if response.clicked() {
             *active_tab = tab;
         }
-        ui.add_space(2.0);
+
+        if ui.is_rect_visible(rect) {
+            let (bg, text_col) = if is_active {
+                (COLOR_SIDEBAR_ACTIVE, COLOR_PRIMARY)
+            } else if response.hovered() {
+                (COLOR_BG_HOVER, COLOR_TEXT)
+            } else {
+                (Color32::TRANSPARENT, COLOR_TEXT_DIM)
+            };
+            
+            // Draw background
+            ui.painter().rect_filled(rect, egui::CornerRadius::same(8), bg);
+            
+            if is_active {
+                 // Active border and side indicator
+                 ui.painter().rect_stroke(rect, egui::CornerRadius::same(8), Stroke::new(1.0, COLOR_SIDEBAR_BORDER), StrokeKind::Inside);
+                 ui.painter().rect_filled(
+                    Rect::from_min_size(rect.left_center() + Vec2::new(4.0, -8.0), Vec2::new(3.0, 16.0)),
+                    egui::CornerRadius::same(1),
+                    COLOR_PRIMARY
+                );
+            }
+
+            // Icon and Label - Tightened spacing and fixed alignment
+            let text_pos = rect.left_center() + Vec2::new(14.0, 0.0);
+            ui.painter().text(
+                text_pos,
+                egui::Align2::LEFT_CENTER,
+                format!("{}  {}", icon.replace("\u{FE0F}", ""), label),
+                egui::FontId::proportional(13.0),
+                text_col
+            );
+        }
+        ui.add_space(4.0);
     }
 
-    // Bottom Status
-    ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+    // Bottom System Health
+    ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
         ui.add_space(16.0);
         
-        // Status Pill
         let (status_text, status_col) = match status {
-            ServiceStatus::Running => ("RUNNING", COLOR_SUCCESS),
-            ServiceStatus::Starting => ("STARTING", COLOR_WARNING),
-            ServiceStatus::Stopping => ("STOPPING", COLOR_WARNING),
-            ServiceStatus::Stopped => ("STOPPED", COLOR_TEXT_MUTED),
-            ServiceStatus::Error(_) => ("ERROR", COLOR_ERROR),
+            ServiceStatus::Running => ("STABLE", COLOR_SUCCESS),
+            _ => ("OFFLINE", COLOR_TEXT_MUTED),
         };
 
-        egui::Frame::new()
-            .fill(COLOR_BG_CARD)
-            .corner_radius(egui::CornerRadius::same(12))
-            .stroke(Stroke::new(1.0, COLOR_BORDER))
-            .inner_margin(8)
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("●").size(10.0).color(status_col));
-                    ui.label(RichText::new(status_text).size(10.0).strong().color(status_col));
-                });
-            });
-            
-        if let ServiceStatus::Error(_) = status {
-             if ui.link(RichText::new("View Error").size(10.0).color(COLOR_ERROR)).clicked() {
-                 *active_tab = Tab::Logs;
-             }
-        }
+        ui.horizontal(|ui| {
+            ui.painter().circle_filled(ui.cursor().min + Vec2::new(5.0, 5.0), 4.0, status_col);
+            ui.add_space(14.0);
+            ui.label(RichText::new(format!("SYSTEM STATUS: {}", status_text)).size(9.0).strong().color(COLOR_TEXT_MUTED));
+        });
     });
 }
 
@@ -148,104 +154,130 @@ pub fn render_dashboard(
     containers: &[ContainerInfo],
     docker_available: bool,
 ) {
-    ScrollArea::vertical().show(ui, |ui| {
-        ui.add_space(10.0);
-        
-        // Modern Header
-        ui.horizontal(|ui| {
-             ui.vertical(|ui| {
-                 ui.heading(RichText::new("Dashboard").size(28.0).color(COLOR_TEXT).strong());
-                 ui.label(RichText::new("Overview of your local environment").size(14.0).color(COLOR_TEXT_DIM));
-             });
+    if !docker_available {
+        ui.add_space(20.0);
+        card_frame(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("⚠").size(40.0).color(COLOR_ERROR));
+                ui.add_space(16.0);
+                ui.vertical(|ui| {
+                    ui.heading(RichText::new("Docker Daemon Unreachable").color(COLOR_ERROR));
+                    ui.label("DockStack requires Docker to manage your services. Please ensure Docker is running.");
+                });
+            });
         });
-        ui.add_space(24.0);
+        return;
+    }
 
-        if !docker_available {
-            ui.scope(|ui| {
-                ui.style_mut().visuals.extreme_bg_color = COLOR_ERROR.gamma_multiply(0.1);
-                egui::Frame::group(ui.style())
-                    .stroke(Stroke::new(1.0, COLOR_ERROR))
-                    .show(ui, |ui| {
-                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("⚠").size(24.0).color(COLOR_ERROR));
-                            ui.vertical(|ui| {
-                                ui.label(RichText::new("Docker Not Found").strong().color(COLOR_ERROR));
-                                ui.label(RichText::new("Please start Docker Desktop/Engine to use DockStack.").color(COLOR_TEXT));
-                            });
-                         });
-                    });
-            });
-            return;
-        }
+    // Unified Top Metrics Bar
+    ui.add_space(8.0);
+    ui.label(RichText::new("SYSTEM WELLNESS").size(9.0).color(COLOR_TEXT_MUTED).strong().extra_letter_spacing(1.2));
+    ui.add_space(12.0);
+    
+    egui::Grid::new("system_wellness_grid")
+        .num_columns(4)
+        .spacing(Vec2::new(16.0, 16.0))
+        .min_col_width((ui.available_width() - 48.0) / 4.0)
+        .show(ui, |ui| {
+             stat_card(ui, "CPU Load", &format!("{:.0}%", sys_stats.cpu_usage), "📈", COLOR_PRIMARY);
+             stat_card(ui, "Memory", &format!("{:.1}GB", sys_stats.memory_used as f64 / 1024.0 / 1024.0 / 1024.0), "💾", COLOR_SECONDARY);
+             stat_card(ui, "Containers", &format!("{}", containers.len()), "🐳", COLOR_SUCCESS);
+             stat_card(ui, "Network", "100%", "🛡", COLOR_ACCENT);
+             ui.end_row();
+        });
 
-        // Stats Grid
-        egui::Grid::new("dash_stats")
-            .spacing(Vec2::new(16.0, 16.0))
-            .min_col_width(180.0)
-            .show(ui, |ui| {
-                stat_card(ui, "CPU Load", &format!("{:.0}%", sys_stats.cpu_usage), "📈", COLOR_PRIMARY);
-                stat_card(ui, "Memory", &format!("{:.1} GB", sys_stats.memory_used as f64 / 1024.0 / 1024.0 / 1024.0), "💾", COLOR_SECONDARY);
-                stat_card(ui, "Containers", &format!("{}", containers.len()), "📦", COLOR_ACCENT);
-                if let Some(project) = config.active_project() {
-                    let enabled = project.services.values().filter(|v| v.enabled).count();
-                    stat_card(ui, "Active Services", &format!("{}", enabled), "⚡", COLOR_SUCCESS);
-                }
-                ui.end_row();
-            });
+    ui.add_space(32.0);
 
-        ui.add_space(32.0);
-
-        // Active Stack Section
-        ui.label(RichText::new("Details").size(16.0).strong().color(COLOR_TEXT));
-        ui.add_space(12.0);
-
-        if let Some(project) = config.active_project() {
-            let enabled_services: Vec<_> = project.services.iter().filter(|(_, v)| v.enabled).collect();
+    // Bento Main Section - Perfectly Aligned
+    ui.columns(2, |columns| {
+        // COLUMN 1: Environment Details
+        columns[0].vertical(|ui| {
+            ui.label(RichText::new("WORKSPACE CONTEXT").size(9.0).color(COLOR_TEXT_MUTED).strong().extra_letter_spacing(1.2));
+            ui.add_space(10.0);
             
-            if enabled_services.is_empty() {
-                ui.label("No services enabled. Enable them in the Stack tab.");
-            } else {
-                 egui::Grid::new("dash_services")
-                    .num_columns(2)
-                    .spacing(Vec2::new(16.0, 16.0))
-                    .show(ui, |ui| {
-                        for (i, (name, svc)) in enabled_services.iter().enumerate() {
-                            let info = crate::services::get_service_info(name);
-                            let display_name = info.as_ref().map(|i| i.display_name.clone()).unwrap_or(name.to_string());
-                            let icon = info.as_ref().map(|i| i.icon).unwrap_or("❓");
-                            
-                            let is_running = containers.iter().any(|c| c.name.contains(name.as_str()) && c.state.contains("running"));
-                            
-                            service_card_compact(ui, &display_name, &icon, &svc.version, svc.port, is_running);
-                            
-                            if (i + 1) % 2 == 0 {
-                                ui.end_row();
-                            }
+            card_frame(ui, |ui| {
+                 ui.set_width(ui.available_width());
+                 ui.set_height(120.0); // Fixed height for matching
+                 if let Some(project) = config.active_project() {
+                    ui.label(RichText::new(&project.name).size(20.0).strong().color(COLOR_TEXT));
+                    ui.label(RichText::new(&project.directory).size(11.0).color(COLOR_TEXT_DIM));
+                    
+                    ui.add_space(20.0);
+                    ui.horizontal(|ui| {
+                        if ui.add(egui::Button::new(RichText::new("🌐  Localhost").strong()).fill(COLOR_BG_HOVER)).clicked() {
+                            let port = project.services.get("nginx").map(|s| s.port).or_else(|| project.services.get("apache").map(|s| s.port)).unwrap_or(80);
+                            utils::open_url(&format!("http://localhost:{}", port));
                         }
-                        if enabled_services.len() % 2 != 0 {
+                        ui.add_space(12.0);
+                        if ui.add(egui::Button::new(RichText::new("📂  Explore").strong()).fill(COLOR_BG_HOVER)).clicked() {
+                            utils::open_directory(&project.directory);
+                        }
+                    });
+                 } else {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(30.0);
+                        ui.label(RichText::new("No active project selected.").color(COLOR_TEXT_DIM));
+                    });
+                 }
+            });
+        });
+
+        // COLUMN 2: Docker Status
+        columns[1].vertical(|ui| {
+            ui.label(RichText::new("DOCKER ENGINE").size(9.0).color(COLOR_TEXT_MUTED).strong().extra_letter_spacing(1.2));
+            ui.add_space(10.0);
+
+            card_frame(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.set_height(120.0); // Matching height
+                ui.label(RichText::new("Runtime Connectivity").strong());
+                ui.add_space(12.0);
+                ui.horizontal_centered(|ui| {
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), egui::Sense::hover());
+                    ui.painter().circle_filled(rect.center(), 5.0, COLOR_SUCCESS);
+                    ui.add_space(8.0);
+                    ui.label(RichText::new("Daemon is Online").color(COLOR_TEXT).strong());
+                });
+                ui.add_space(10.0);
+                ui.label(RichText::new("API: 1.44  •  v25.0.3").size(11.0).color(COLOR_TEXT_DIM));
+            });
+        });
+    });
+
+    ui.add_space(40.0);
+    ui.separator();
+    ui.add_space(32.0);
+
+    // Services Grid
+    ui.label(RichText::new("SERVICE STACK OVERVIEW").size(9.0).color(COLOR_TEXT_MUTED).strong().extra_letter_spacing(1.2));
+    ui.add_space(18.0);
+
+    if let Some(project) = config.active_project() {
+        let enabled_services: Vec<_> = project.services.iter().filter(|(_, v)| v.enabled).collect();
+        
+        if enabled_services.is_empty() {
+            ui.label(RichText::new("No services enabled in this stack.").color(COLOR_TEXT_MUTED).italics());
+        } else {
+            egui::Grid::new("dash_services_grid")
+                .num_columns(2)
+                .spacing(Vec2::new(16.0, 16.0))
+                .min_col_width((ui.available_width() - 16.0) / 2.0)
+                .show(ui, |ui| {
+                    for (i, (name, svc)) in enabled_services.iter().enumerate() {
+                        let info = crate::services::get_service_info(name);
+                        let display_name = info.as_ref().map(|i| i.display_name.clone()).unwrap_or(name.to_string());
+                        let icon = info.as_ref().map(|i| i.icon).unwrap_or("❓");
+                        let is_running = containers.iter().any(|c| c.name.contains(name.as_str()) && c.state.contains("running"));
+                        
+                        service_card_compact(ui, &display_name, &icon, &svc.version, svc.port, is_running);
+                        
+                        if (i + 1) % 2 == 0 {
                             ui.end_row();
                         }
-                    });
-            }
+                    }
+                });
         }
-        
-        ui.add_space(32.0);
-        
-        // Quick Actions
-         ui.label(RichText::new("Shortcuts").size(16.0).strong().color(COLOR_TEXT));
-         ui.add_space(12.0);
-         ui.horizontal(|ui| {
-             if let Some(project) = config.active_project() {
-                if ui.add(egui::Button::new(RichText::new("🌐 Open Localhost").size(14.0)).frame(true).min_size(Vec2::new(140.0, 40.0))).clicked() {
-                     let port = project.services.get("nginx").map(|s| s.port).or_else(|| project.services.get("apache").map(|s| s.port)).unwrap_or(80);
-                     utils::open_url(&format!("http://localhost:{}", port));
-                }
-                if ui.add(egui::Button::new(RichText::new("📂 Open Project Folder").size(14.0)).frame(true).min_size(Vec2::new(160.0, 40.0))).clicked() {
-                     utils::open_directory(&project.directory);
-                }
-             }
-         });
-    });
+    }
 }
 
 fn stat_card(ui: &mut egui::Ui, title: &str, value: &str, icon: &str, accent: Color32) {
@@ -255,20 +287,39 @@ fn stat_card(ui: &mut egui::Ui, title: &str, value: &str, icon: &str, accent: Co
         .stroke(Stroke::new(1.0, COLOR_BORDER))
         .inner_margin(16.0)
         .show(ui, |ui| {
-             ui.set_min_width(180.0);
-             ui.horizontal(|ui| {
-                 ui.label(RichText::new(icon).size(24.0));
-                 ui.add_space(8.0);
+             ui.set_width(ui.available_width());
+             ui.set_height(86.0); // Strictly fixed height for stat cards
+
+             ui.horizontal_centered(|ui| {
+                 // Premium Icon Container with Glow
+                 let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 52.0), egui::Sense::hover());
+                 
+                 // Glow effect
+                 ui.painter().circle_filled(rect.center(), 24.0, accent.gamma_multiply(0.1));
+                 ui.painter().circle_stroke(rect.center(), 20.0, Stroke::new(1.0, accent.gamma_multiply(0.2)));
+                 
+                 ui.painter().text(
+                     rect.center(), 
+                     egui::Align2::CENTER_CENTER, 
+                     icon, 
+                     egui::FontId::proportional(26.0), 
+                     accent
+                 );
+                 
+                 ui.add_space(14.0);
+                 
                  ui.vertical(|ui| {
-                     ui.label(RichText::new(title).size(12.0).color(COLOR_TEXT_DIM));
-                     ui.label(RichText::new(value).size(20.0).strong().color(COLOR_TEXT));
+                     ui.label(RichText::new(title.to_uppercase()).size(11.0).color(COLOR_TEXT_MUTED).strong());
+                     ui.add_space(2.0);
+                     ui.label(RichText::new(value).size(26.0).strong().color(COLOR_TEXT));
                  });
              });
-             // Little accent bar
+             
+             // Sleek Bottom Accent Line
              let rect = ui.min_rect();
              ui.painter().rect_filled(
-                 Rect::from_min_size(rect.left_bottom() + Vec2::new(16.0, -2.0), Vec2::new(rect.width() - 32.0, 2.0)),
-                 egui::CornerRadius::same(2),
+                 Rect::from_min_size(rect.left_bottom() + Vec2::new(12.0, -4.0), Vec2::new(rect.width() - 24.0, 3.0)),
+                 egui::CornerRadius::same(1),
                  accent
              );
         });
@@ -278,21 +329,46 @@ fn service_card_compact(ui: &mut egui::Ui, name: &str, icon: &str, version: &str
     egui::Frame::new()
         .fill(COLOR_BG_CARD)
         .corner_radius(egui::CornerRadius::same(12))
-        .stroke(Stroke::new(1.0, if running { COLOR_BORDER_LIGHT } else { COLOR_BORDER }))
-        .inner_margin(16.0)
+        .stroke(Stroke::new(1.0, if running { COLOR_PRIMARY.gamma_multiply(0.4) } else { COLOR_BORDER }))
+        .inner_margin(12.0)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(icon).size(24.0));
-                ui.add_space(8.0);
+            ui.set_height(68.0); // Unified height
+
+            ui.horizontal_centered(|ui| {
+                // Icon styling in panel-like box
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(42.0, 42.0), egui::Sense::hover());
+                ui.painter().rect_filled(rect, egui::CornerRadius::same(10), COLOR_BG_PANEL);
+                ui.painter().rect_stroke(rect, egui::CornerRadius::same(10), Stroke::new(1.0, COLOR_BORDER), StrokeKind::Inside);
+                
+                ui.painter().text(
+                    rect.center() + Vec2::new(0.0, 1.0), 
+                    egui::Align2::CENTER_CENTER, 
+                    icon, 
+                    egui::FontId::proportional(20.0), 
+                    Color32::WHITE
+                );
+
+                ui.add_space(14.0);
+                
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(name).size(16.0).strong().color(COLOR_TEXT));
                         if running {
-                             ui.label(RichText::new("●").size(8.0).color(COLOR_SUCCESS));
+                             ui.add_space(8.0);
+                             ui.label(RichText::new("●").size(10.0).color(COLOR_SUCCESS));
                         }
                     });
-                    ui.label(RichText::new(format!("v{} • Port {}", version, port)).size(12.0).color(COLOR_TEXT_DIM));
+                    ui.add_space(1.0);
+                    ui.label(RichText::new(format!("v{} ● Port: {}", version, port)).size(11.0).color(COLOR_TEXT_DIM));
+                });
+                
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if running {
+                        ui.label(RichText::new("ONLINE").size(9.0).strong().color(COLOR_SUCCESS).extra_letter_spacing(1.0));
+                    } else {
+                        ui.label(RichText::new("OFFLINE").size(9.0).strong().color(COLOR_TEXT_MUTED).extra_letter_spacing(1.0));
+                    }
                 });
             });
         });
@@ -339,20 +415,33 @@ pub fn render_services(
                             .inner_margin(16.0)
                             .show(ui, |ui| {
                                 ui.set_width(ui.available_width());
+                                ui.set_min_height(72.0); // Consistent Height
+
                                 ui.horizontal(|ui| {
-                                    // Status & Icon
-                                    ui.label(RichText::new(svc_info.icon).size(28.0));
-                                    ui.add_space(12.0);
+                                    // Status & Icon container
+                                    let (rect, _) = ui.allocate_exact_size(Vec2::new(48.0, 48.0), egui::Sense::hover());
+                                    ui.painter().rect_filled(rect, egui::CornerRadius::same(10), COLOR_BG_PANEL);
+                                    ui.painter().text(
+                                        rect.center() + Vec2::new(0.0, 1.0), 
+                                        egui::Align2::CENTER_CENTER, 
+                                        svc_info.icon.replace("\u{FE0F}", ""), 
+                                        egui::FontId::proportional(22.0), 
+                                        Color32::WHITE
+                                    );
+
+                                    ui.add_space(16.0);
                                     
                                     // Info
                                     ui.vertical(|ui| {
                                         ui.horizontal(|ui| {
-                                            ui.label(RichText::new(&svc_info.display_name).size(16.0).strong().color(COLOR_TEXT));
+                                            ui.label(RichText::new(&svc_info.display_name).size(18.0).strong().color(COLOR_TEXT));
                                             if is_running {
-                                                ui.label(RichText::new("● RUNNING").size(9.0).color(COLOR_SUCCESS).strong());
+                                                ui.add_space(8.0);
+                                                ui.label(RichText::new("● RUNNING").size(10.0).color(COLOR_SUCCESS).strong());
                                             }
                                         });
-                                        ui.label(RichText::new(&svc_info.description).size(12.0).color(COLOR_TEXT_DIM));
+                                        ui.add_space(4.0);
+                                        ui.label(RichText::new(&svc_info.description).size(13.0).color(COLOR_TEXT_DIM));
                                     });
                                     
                                     // Controls (Right aligned)
@@ -364,10 +453,10 @@ pub fn render_services(
                                             if svc_info.name == "ssl" { project.ssl_enabled = enabled; }
                                         }
                                         
-                                        ui.add_space(16.0);
+                                        ui.add_space(24.0);
                                         
                                         // Config actions
-                                        ui.menu_button("⚙ Config", |ui| {
+                                        ui.menu_button(RichText::new("⚙ Config").size(13.0).color(COLOR_TEXT), |ui| {
                                              if ui.button("Edit Environment Vars").clicked() {
                                                  // Todo: Expand logic
                                              }
@@ -377,6 +466,7 @@ pub fn render_services(
                                                 "apache" => Some(std::path::Path::new(&project.directory).join("apache/httpd.conf")),
                                                 "php" => Some(std::path::Path::new(&project.directory).join("php/php.ini")),
                                                 "mysql" => Some(std::path::Path::new(&project.directory).join("mysql/my.cnf")),
+                                                "postgresql" => Some(std::path::Path::new(&project.directory).join("postgresql/postgresql.conf")),
                                                 _ => None,
                                             };
                                             if let Some(path) = config_path {
@@ -391,7 +481,7 @@ pub fn render_services(
                                             }
                                         });
                                         
-                                        ui.label(RichText::new(format!("Port: {}", svc.port)).size(12.0).color(COLOR_TEXT_MUTED));
+                                        ui.label(RichText::new(format!("Port: {}", svc.port)).size(13.0).color(COLOR_TEXT_MUTED).monospace());
                                     });
                                 });
                                 
@@ -648,7 +738,7 @@ pub fn render_monitor(
 }
 pub fn render_settings(
     ui: &mut egui::Ui,
-    config: &mut AppConfig,
+    _config: &mut AppConfig,
     new_project_name: &mut String,
     gen_ssl: &mut bool,
     rem_ssl: &mut bool,

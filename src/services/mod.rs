@@ -65,7 +65,7 @@ pub fn get_service_registry() -> Vec<ServiceInfo> {
             description: "High performance web server & reverse proxy".to_string(),
             default_port: 80,
             category: ServiceCategory::WebServer,
-            icon: "🟢",
+            icon: "🌐",
         },
         ServiceInfo {
             name: "apache".to_string(),
@@ -73,7 +73,7 @@ pub fn get_service_registry() -> Vec<ServiceInfo> {
             description: "The most widely used web server".to_string(),
             default_port: 8080,
             category: ServiceCategory::WebServer,
-            icon: "🪶",
+            icon: "🎯",
         },
         ServiceInfo {
             name: "php".to_string(),
