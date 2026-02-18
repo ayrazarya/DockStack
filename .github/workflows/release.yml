@@ -77,17 +77,17 @@ jobs:
         with:
           files: artifacts/**/*
           body: |
-            ## DockStack v${{ github.ref_name }} - Premium UI Release
+            ## DockStack v${{ github.ref_name }}
 
-            ### 🚀 Updates
-            - **Bento Box UI**: Modern, cinematic dashboard layout.
-            - **System Wellness**: Real-time monitoring with unified cards.
-            - **Performance**: Optimized Rust release builds for Linux, Windows, and macOS.
-            - **Fixes**: Comprehensive icon alignment and stability overhaul.
+            ### Technical Updates
+            - **Bento Interface Implementation**: New dashboard architecture for high information density.
+            - **System Resource Monitoring**: Integration of real-time metrics for CPU, memory, and instances.
+            - **Cross-Platform Compilation**: Optimized release binaries for Linux, Windows, and macOS.
+            - **Stability Enhancements**: Comprehensive UI alignment and rendering stability overhaul.
 
-            ### 📦 Installation
-            Download the binary for your OS and run it directly.
-            - **Linux**: `chmod +x dockstack-linux-x64` then `./dockstack-linux-x64`
-            - **Windows**: Run `dockstack-windows-x64.exe`
-            - **macOS**: `chmod +x dockstack-macos-x64` then `./dockstack-macos-x64`
+            ### Installation Instructions
+            Execute the binary corresponding to the host operating system.
+            - **Linux**: chmod +x dockstack-linux-x64 && ./dockstack-linux-x64
+            - **Windows**: Execute dockstack-windows-x64.exe
+            - **macOS**: chmod +x dockstack-macos-x64 && ./dockstack-macos-x64
           token: ${{ secrets.GITHUB_TOKEN }}
