@@ -11,7 +11,7 @@ pub fn status_dot(ui: &mut Ui, running: bool) -> egui::Response {
         let color = if running { COLOR_SUCCESS } else { COLOR_TEXT_MUTED };
 
         if running {
-            ui.painter().circle_filled(center, 6.0, Color32::from_rgba_premultiplied(34, 197, 94, 30));
+            ui.painter().circle_filled(center, 6.0, COLOR_SUCCESS.gamma_multiply(0.3));
         }
         ui.painter().circle_filled(center, 4.0, color);
     }
@@ -20,13 +20,19 @@ pub fn status_dot(ui: &mut Ui, running: bool) -> egui::Response {
 }
 
 /// Draw a card container
-/// Draw a card container - Modern Style
+/// Draw a card container - Modern Minimalist
 pub fn card_frame(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) {
     egui::Frame::new()
         .fill(COLOR_BG_CARD)
-        .corner_radius(egui::CornerRadius::same(8))
+        .corner_radius(egui::CornerRadius::same(12))
         .stroke(Stroke::new(1.0, COLOR_BORDER))
-        .inner_margin(egui::Margin::same(16))
+        .shadow(egui::epaint::Shadow {
+            offset: [0, 4],
+            blur: 15,
+            spread: 0,
+            color: Color32::from_black_alpha(10),
+        })
+        .inner_margin(egui::Margin::same(20))
         .show(ui, |ui| {
             add_contents(ui);
         });
@@ -38,8 +44,8 @@ pub fn primary_button(ui: &mut Ui, text: &str) -> egui::Response {
         egui::RichText::new(text).color(Color32::WHITE).size(13.0).strong(),
     )
     .fill(COLOR_PRIMARY)
-    .corner_radius(egui::CornerRadius::same(6))
-    .min_size(Vec2::new(0.0, 32.0)) // Taller button
+    .corner_radius(egui::CornerRadius::same(8))
+    .min_size(Vec2::new(0.0, 36.0)) // Taller button
     .stroke(Stroke::NONE);
 
     ui.add(button)
@@ -51,8 +57,8 @@ pub fn danger_button(ui: &mut Ui, text: &str) -> egui::Response {
         egui::RichText::new(text).color(Color32::WHITE).size(13.0).strong(),
     )
     .fill(COLOR_ERROR)
-    .corner_radius(egui::CornerRadius::same(6))
-    .min_size(Vec2::new(0.0, 32.0))
+    .corner_radius(egui::CornerRadius::same(8))
+    .min_size(Vec2::new(0.0, 36.0))
     .stroke(Stroke::NONE);
 
     ui.add(button)
@@ -93,7 +99,7 @@ pub fn sparkline(ui: &mut Ui, values: &[f32], max_val: f32, color: Color32, size
         }
 
         // Draw fill (trapezoids)
-        let fill_color = Color32::from_rgba_premultiplied(
+        let fill_color = Color32::from_rgba_unmultiplied(
             color.r(),
             color.g(),
             color.b(),

@@ -98,6 +98,7 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
 
                 let vols = vec![
                     YamlVal::String(format!("{}:/usr/local/apache2/htdocs/", project.directory)),
+                    YamlVal::String("./apache/httpd.conf:/usr/local/apache2/conf/httpd.conf".to_string()),
                 ];
                 s.insert(y_str("volumes"), YamlVal::Sequence(vols));
 
@@ -259,6 +260,14 @@ pub fn write_compose_file(project: &ProjectConfig) -> std::io::Result<String> {
         write_nginx_config(project)?;
     }
 
+    // Write apache config if apache is enabled
+    if project.services.get("apache").map_or(false, |s| s.enabled) {
+        write_apache_config(project)?;
+    }
+
+    // Write default index.php if directory is empty
+    write_default_index(project)?;
+
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -317,7 +326,112 @@ server {
 "#
     };
 
-    fs::write(nginx_dir.join("default.conf"), config)?;
+    let config_path = nginx_dir.join("default.conf");
+    
+    // Don't overwrite if exists
+    if config_path.exists() {
+        return Ok(());
+    }
+
+    fs::write(config_path, config)?;
+    Ok(())
+}
+
+fn write_apache_config(project: &ProjectConfig) -> std::io::Result<()> {
+    let apache_dir = Path::new(&project.directory).join("apache");
+    fs::create_dir_all(&apache_dir)?;
+
+    let config_path = apache_dir.join("httpd.conf");
+
+    // Don't overwrite if exists
+    if config_path.exists() {
+        return Ok(());
+    }
+
+    // Basic Apache 2.4 config with DirectoryIndex and .htaccess enabled
+    let config = r#"
+ServerRoot "/usr/local/apache2"
+Listen 80
+
+LoadModule mpm_event_module modules/mod_mpm_event.so
+LoadModule authz_core_module modules/mod_authz_core.so
+LoadModule authz_host_module modules/mod_authz_host.so
+LoadModule dir_module modules/mod_dir.so
+LoadModule mime_module modules/mod_mime.so
+LoadModule log_config_module modules/mod_log_config.so
+LoadModule unixd_module modules/mod_unixd.so
+LoadModule rewrite_module modules/mod_rewrite.so
+LoadModule proxy_module modules/mod_proxy.so
+LoadModule proxy_fcgi_module modules/mod_proxy_fcgi.so
+
+User daemon
+Group daemon
+
+ServerAdmin you@example.com
+DocumentRoot "/usr/local/apache2/htdocs"
+
+<Directory />
+    AllowOverride none
+    Require all denied
+</Directory>
+
+<Directory "/usr/local/apache2/htdocs">
+    Options Indexes FollowSymLinks
+    AllowOverride All
+    Require all granted
+</Directory>
+
+<IfModule dir_module>
+    DirectoryIndex index.php index.html
+</IfModule>
+
+<IfModule log_config_module>
+    LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+    CustomLog /proc/self/fd/1 combined
+    ErrorLog /proc/self/fd/2
+</IfModule>
+
+<Files ".ht*">
+    Require all denied
+</Files>
+
+<FilesMatch \.php$>
+    SetHandler "proxy:fcgi://php:9000"
+</FilesMatch>
+"#;
+
+    fs::write(config_path, config)?;
+    Ok(())
+}
+
+fn write_default_index(project: &ProjectConfig) -> std::io::Result<()> {
+    let index_php = Path::new(&project.directory).join("index.php");
+    let index_html = Path::new(&project.directory).join("index.html");
+
+    if !index_php.exists() && !index_html.exists() {
+        let content = format!(r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>DockStack - {}</title>
+    <style>
+        body {{ font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0f2f5; }}
+        .container {{ text-align: center; padding: 2rem; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        h1 {{ color: #1a73e8; }}
+        p {{ color: #5f6368; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DockStack ⚡</h1>
+        <p>Your service is up and running!</p>
+        <p>Project: <strong>{}</strong></p>
+        <p><small>PHP Version: <?php echo phpversion(); ?></small></p>
+    </div>
+</body>
+</html>"#, project.name, project.name);
+        
+        fs::write(index_php, content)?;
+    }
     Ok(())
 }
 

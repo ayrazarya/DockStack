@@ -147,72 +147,69 @@ impl DockStackApp {
     fn render_top_bar(&mut self, ui: &mut egui::Ui) {
         egui::Frame::new()
             .fill(theme::COLOR_BG_PANEL)
-            .inner_margin(egui::Margin::symmetric(16, 8))
+            .inner_margin(egui::Margin::symmetric(24, 12))
             .stroke(egui::Stroke::new(1.0, theme::COLOR_BORDER))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let status = self.docker.status.lock().unwrap().clone();
+                    // Title based on active tab
+                    let title = match self.active_tab {
+                        Tab::Dashboard => "Dashboard",
+                        Tab::Services => "Services Stack",
+                        Tab::Containers => "Containers",
+                        Tab::Logs => "System Logs",
+                        Tab::Terminal => "Terminal",
+                        Tab::Ports => "Port Scanner",
+                        Tab::Monitor => "Resource Monitor",
+                        Tab::Settings => "Settings",
+                    };
+                    
+                    ui.label(
+                        egui::RichText::new(title)
+                            .size(18.0)
+                            .strong()
+                            .color(theme::COLOR_TEXT)
+                    );
 
-                    // Action buttons
-                    let can_start = matches!(status, ServiceStatus::Stopped | ServiceStatus::Error(_));
-                    let can_stop = matches!(status, ServiceStatus::Running);
-
-                    ui.add_enabled_ui(can_start, |ui| {
-                        if crate::ui::widgets::primary_button(ui, "▶ Start").clicked() {
-                            if let Some(project) = self.config.active_project() {
-                                self.docker.start_services(project);
-                            }
-                        }
-                    });
-
-                    ui.add_enabled_ui(can_stop, |ui| {
-                        if crate::ui::widgets::danger_button(ui, "⏹ Stop").clicked() {
-                            if let Some(project) = self.config.active_project() {
-                                self.docker.stop_services(project);
-                            }
-                        }
-                    });
-
-                    ui.add_enabled_ui(can_stop, |ui| {
-                        if crate::ui::widgets::secondary_button(ui, "🔄 Restart").clicked() {
-                            if let Some(project) = self.config.active_project() {
-                                self.docker.restart_services(project);
-                            }
-                        }
-                    });
-
-                    // Project selector
+                    // Global Actions (Right aligned)
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let project_names: Vec<String> =
-                            self.config.projects.iter().map(|p| p.name.clone()).collect();
-                        let active_idx = self
-                            .config
-                            .active_project_id
-                            .as_ref()
-                            .and_then(|id| self.config.projects.iter().position(|p| &p.id == id))
-                            .unwrap_or(0);
+                        let status = self.docker.status.lock().unwrap().clone();
+                        let can_start = matches!(status, ServiceStatus::Stopped | ServiceStatus::Error(_));
+                        let can_stop = matches!(status, ServiceStatus::Running);
 
-                        let mut selected = active_idx;
-                        egui::ComboBox::from_id_salt("project_selector")
-                            .selected_text(&project_names[selected.min(project_names.len().saturating_sub(1))])
-                            .width(160.0)
-                            .show_ui(ui, |ui| {
-                                for (i, name) in project_names.iter().enumerate() {
-                                    ui.selectable_value(&mut selected, i, name);
+                        ui.add_enabled_ui(can_stop, |ui| {
+                            if ui.button(egui::RichText::new("⏹ Stop All").color(theme::COLOR_ERROR)).clicked() {
+                                if let Some(project) = self.config.active_project() {
+                                    self.docker.stop_services(project);
                                 }
-                            });
+                            }
+                        });
+                        
+                        ui.add_space(8.0);
 
-                        if selected != active_idx && selected < self.config.projects.len() {
-                            self.config.active_project_id =
-                                Some(self.config.projects[selected].id.clone());
-                            self.config.save();
-                        }
+                        ui.add_enabled_ui(can_stop, |ui| {
+                            if ui.button(egui::RichText::new("🔄 Restart").color(theme::COLOR_WARNING)).clicked() {
+                                if let Some(project) = self.config.active_project() {
+                                    self.docker.restart_services(project);
+                                }
+                            }
+                        });
 
-                        ui.label(
-                            egui::RichText::new("Project:")
-                                .size(12.0)
-                                .color(theme::COLOR_TEXT_MUTED),
-                        );
+                        ui.add_space(8.0);
+
+                        ui.add_enabled_ui(can_start, |ui| {
+                            let btn = egui::Button::new(
+                                egui::RichText::new("▶ Start All")
+                                    .color(theme::COLOR_BG_APP) // Text on primary
+                                    .strong()
+                            )
+                            .fill(theme::COLOR_SUCCESS);
+                            
+                            if ui.add(btn).clicked() {
+                                if let Some(project) = self.config.active_project() {
+                                    self.docker.start_services(project);
+                                }
+                            }
+                        });
                     });
                 });
             });
@@ -232,25 +229,13 @@ impl eframe::App for DockStackApp {
 
         // Init tray (only once)
         if !self.tray_initialized {
-            /*
-            match self.tray.setup() {
-                Ok(_) => {
-                    self.tray_initialized = true;
-                    log::info!("System tray initialized");
-                },
-                Err(e) => {
-                    log::warn!("Failed to initialize system tray: {}", e);
-                    self.tray_initialized = true; // Don't retry
-                }
-            }
-            */
             log::warn!("System tray temporarily disabled for debugging");
             self.tray_initialized = true;
         }
 
         // Periodic container refresh
         if self.last_container_refresh.elapsed().as_secs() >= 3 {
-            if let Some(project) = self.config.active_project() {
+             if let Some(project) = self.config.active_project() {
                 self.docker.refresh_containers(project);
             }
             self.last_container_refresh = Instant::now();
@@ -260,63 +245,37 @@ impl eframe::App for DockStackApp {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             self.render_top_bar(ui);
         });
-
-        // Bottom status bar
+        
+        // Bottom status bar (Minimal)
         egui::TopBottomPanel::bottom("status_bar")
-            .max_height(28.0)
+            .max_height(24.0)
             .show(ctx, |ui| {
                 egui::Frame::new()
-                    .fill(theme::COLOR_SIDEBAR)
-                    .inner_margin(egui::Margin::symmetric(12, 4))
+                    .fill(theme::COLOR_BG_PANEL)
+                    .inner_margin(egui::Margin::symmetric(12, 2))
                     .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            let docker_status = if self.docker_available {
-                                ("🐳 Docker: Connected", theme::COLOR_SUCCESS)
-                            } else {
-                                ("🐳 Docker: Not Found", theme::COLOR_ERROR)
-                            };
-                            ui.label(
-                                egui::RichText::new(docker_status.0)
-                                    .size(11.0)
-                                    .color(docker_status.1),
-                            );
-
-                            ui.separator();
-
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "CPU: {:.0}% | RAM: {:.0}%",
-                                    self.sys_stats.cpu_usage, self.sys_stats.memory_percent
-                                ))
-                                .size(11.0)
-                                .color(theme::COLOR_TEXT_MUTED),
-                            );
-
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.label(
-                                        egui::RichText::new("DockStack v0.1.0")
-                                            .size(11.0)
-                                            .color(theme::COLOR_TEXT_MUTED),
-                                    );
-                                },
-                            );
-                        });
+                         ui.horizontal(|ui| {
+                             ui.label(egui::RichText::new("DockStack v0.1.0").size(10.0).color(theme::COLOR_TEXT_DIM));
+                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                 ui.label(egui::RichText::new(format!("CPU: {:.0}%", self.sys_stats.cpu_usage)).size(10.0).color(theme::COLOR_TEXT_DIM));
+                             });
+                         });
                     });
             });
 
         // Left sidebar
         egui::SidePanel::left("sidebar")
-            .exact_width(220.0)
+            .exact_width(240.0) // Wider sidebar
             .resizable(false)
             .frame(egui::Frame::new()
-                .fill(theme::COLOR_SIDEBAR)
-                .inner_margin(egui::Margin::symmetric(12, 16)))
+                .fill(theme::COLOR_BG_PANEL)
+                .inner_margin(egui::Margin::symmetric(0, 0))) // Full width
             .show(ctx, |ui| {
                 let status = self.docker.status.lock().unwrap().clone();
-                panels::render_sidebar(ui, &mut self.active_tab, &self.config, &status);
+                // Pass mutable config now
+                panels::render_sidebar(ui, &mut self.active_tab, &mut self.config, &status);
             });
+
 
         // Main content area
         egui::CentralPanel::default().show(ctx, |ui| {
