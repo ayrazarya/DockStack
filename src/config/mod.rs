@@ -34,6 +34,7 @@ pub struct ProjectConfig {
     pub services: HashMap<String, ServiceConfig>,
     pub ssl_enabled: bool,
     pub custom_ports: HashMap<String, u16>,
+    pub domain: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +43,7 @@ pub struct ServiceConfig {
     pub port: u16,
     pub version: String,
     pub env_vars: HashMap<String, String>,
+    pub settings: HashMap<String, String>,
 }
 
 impl Default for AppConfig {
@@ -78,6 +80,7 @@ impl Default for ProjectConfig {
                     m.insert("POSTGRES_DB".to_string(), "devdb".to_string());
                     m
                 },
+                settings: HashMap::new(),
             },
         );
 
@@ -93,6 +96,7 @@ impl Default for ProjectConfig {
                     m.insert("MYSQL_DATABASE".to_string(), "devdb".to_string());
                     m
                 },
+                settings: HashMap::new(),
             },
         );
 
@@ -103,6 +107,12 @@ impl Default for ProjectConfig {
                 port: 9000,
                 version: "8.3-fpm".to_string(),
                 env_vars: HashMap::new(),
+                settings: {
+                    let mut m = HashMap::new();
+                    m.insert("extensions".to_string(), "pdo_mysql,gd,zip,intl".to_string());
+                    m.insert("memory_limit".to_string(), "256M".to_string());
+                    m
+                },
             },
         );
 
@@ -113,6 +123,7 @@ impl Default for ProjectConfig {
                 port: 8080,
                 version: "2.4".to_string(),
                 env_vars: HashMap::new(),
+                settings: HashMap::new(),
             },
         );
 
@@ -123,6 +134,7 @@ impl Default for ProjectConfig {
                 port: 80,
                 version: "latest".to_string(),
                 env_vars: HashMap::new(),
+                settings: HashMap::new(),
             },
         );
 
@@ -138,6 +150,7 @@ impl Default for ProjectConfig {
                     m.insert("PMA_PASSWORD".to_string(), "root".to_string());
                     m
                 },
+                settings: HashMap::new(),
             },
         );
 
@@ -159,6 +172,7 @@ impl Default for ProjectConfig {
                     );
                     m
                 },
+                settings: HashMap::new(),
             },
         );
 
@@ -169,6 +183,7 @@ impl Default for ProjectConfig {
                 port: 6379,
                 version: "7".to_string(),
                 env_vars: HashMap::new(),
+                settings: HashMap::new(),
             },
         );
 
@@ -179,6 +194,7 @@ impl Default for ProjectConfig {
                 port: 8083,
                 version: "latest".to_string(),
                 env_vars: HashMap::new(),
+                settings: HashMap::new(),
             },
         );
 
@@ -189,6 +205,7 @@ impl Default for ProjectConfig {
                 port: 443,
                 version: "latest".to_string(),
                 env_vars: HashMap::new(),
+                settings: HashMap::new(),
             },
         );
 
@@ -204,6 +221,7 @@ impl Default for ProjectConfig {
             services,
             ssl_enabled: false,
             custom_ports: HashMap::new(),
+            domain: "dockstack.test".to_string(),
         }
     }
 }

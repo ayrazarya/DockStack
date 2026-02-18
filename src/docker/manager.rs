@@ -375,30 +375,20 @@ impl DockerManager {
     }
 
     pub fn refresh_containers(&self, project: &ProjectConfig) {
-        let project = project.clone();
+        let project_id = project.id.clone();
         let tx = self.event_tx.clone();
         let containers = self.containers.clone();
 
         thread::spawn(move || {
-            // Detect compose
-            let use_plugin = std::process::Command::new("docker")
-                .arg("compose")
-                .arg("version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
-
-            let (prog, mut args) = if use_plugin {
-                ("docker", vec!["compose", "ps", "--format"])
-            } else {
-                ("docker-compose", vec!["ps", "--format"])
-            };
-            
-            args.push("{{.ID}}|{{.Name}}|{{.Image}}|{{.Status}}|{{.Ports}}|{{.State}}");
-
-            let output = Command::new(prog)
-                .args(&args)
-                .current_dir(&project.directory)
+            // Using docker ps with filter is more reliable than docker compose ps
+            // across different versions and environments.
+            let output = Command::new("docker")
+                .arg("ps")
+                .arg("-a")
+                .arg("--filter")
+                .arg(format!("label=com.docker.compose.project={}", project_id))
+                .arg("--format")
+                .arg("{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}|{{.State}}")
                 .output();
 
             match output {
@@ -408,7 +398,7 @@ impl DockerManager {
                         .lines()
                         .filter(|l| !l.is_empty())
                         .map(|line| {
-                            let parts: Vec<&str> = line.splitn(6, '|').collect();
+                            let parts: Vec<&str> = line.split('|').collect();
                             ContainerInfo {
                                 id: parts.first().unwrap_or(&"").to_string(),
                                 name: parts.get(1).unwrap_or(&"").to_string(),

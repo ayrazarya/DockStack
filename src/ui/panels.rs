@@ -149,12 +149,13 @@ pub fn render_sidebar(
 /// Render the dashboard panel
 pub fn render_dashboard(
     ui: &mut egui::Ui,
-    config: &AppConfig,
+    config: &mut AppConfig,
     _status: &ServiceStatus,
     sys_stats: &SystemStats,
     containers: &[ContainerInfo],
     docker_available: bool,
 ) {
+    let mut something_changed = false;
     if !docker_available {
         ui.add_space(20.0);
         card_frame(ui, |ui| {
@@ -189,55 +190,68 @@ pub fn render_dashboard(
 
     ui.add_space(32.0);
 
-    // Bento Main Section - Perfectly Aligned
+    // Workspace and Domain Configuration
     ui.columns(2, |columns| {
-        // COLUMN 1: Environment Details
         columns[0].vertical(|ui| {
             ui.label(RichText::new("WORKSPACE CONTEXT").size(9.0).color(COLOR_TEXT_MUTED).strong().extra_letter_spacing(1.2));
             ui.add_space(10.0);
             
             card_frame(ui, |ui| {
                  ui.set_width(ui.available_width());
-                 ui.set_height(120.0); // Fixed height for matching
-                 if let Some(project) = config.active_project() {
-                    ui.label(RichText::new(&project.name).size(20.0).strong().color(COLOR_TEXT));
-                    ui.label(RichText::new(&project.directory).size(11.0).color(COLOR_TEXT_DIM));
-                    
-                    ui.add_space(20.0);
-                    ui.horizontal(|ui| {
-                        if ui.add(egui::Button::new(RichText::new("🌐  Localhost").strong()).fill(COLOR_BG_HOVER)).clicked() {
-                            let port = project.services.get("nginx").map(|s| s.port).or_else(|| project.services.get("apache").map(|s| s.port)).unwrap_or(80);
-                            utils::open_url(&format!("http://localhost:{}", port));
+                 ui.set_height(140.0);
+                 ui.horizontal(|ui| {
+                     ui.add(egui::Image::new(egui::include_image!("../../assets/images/icon.png"))
+                        .max_size(Vec2::new(32.0, 32.0))
+                        .corner_radius(8.0));
+                     ui.add_space(12.0);
+                     ui.vertical(|ui| {
+                        if let Some(project) = config.active_project_mut() {
+                            ui.label(RichText::new(&project.name).size(20.0).strong().color(COLOR_TEXT));
+                            ui.label(RichText::new(&project.directory).size(11.0).color(COLOR_TEXT_DIM));
                         }
-                        ui.add_space(12.0);
+                     });
+                 });
+                 
+                 if let Some(project) = config.active_project_mut() {
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("🌐 Domain:").size(11.0).color(COLOR_TEXT_DIM));
+                        if ui.add(egui::TextEdit::singleline(&mut project.domain).desired_width(120.0)).changed() {
+                            something_changed = true;
+                        }
+                        if ui.button("📋").clicked() {
+                            ui.output_mut(|o| o.copied_text = format!("127.0.0.1  {}", project.domain));
+                        }
+                    });
+
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.add(egui::Button::new(RichText::new("🔗  Open").strong()).fill(COLOR_BG_HOVER)).clicked() {
+                             let port = project.services.get("nginx").map(|s| s.port).or_else(|| project.services.get("apache").map(|s| s.port)).unwrap_or(80);
+                             utils::open_url(&format!("http://localhost:{}", port));
+                        }
+                        ui.add_space(8.0);
                         if ui.add(egui::Button::new(RichText::new("📂  Explore").strong()).fill(COLOR_BG_HOVER)).clicked() {
                             utils::open_directory(&project.directory);
                         }
-                    });
-                 } else {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(30.0);
-                        ui.label(RichText::new("No active project selected.").color(COLOR_TEXT_DIM));
                     });
                  }
             });
         });
 
-        // COLUMN 2: Docker Status
         columns[1].vertical(|ui| {
             ui.label(RichText::new("DOCKER ENGINE").size(9.0).color(COLOR_TEXT_MUTED).strong().extra_letter_spacing(1.2));
             ui.add_space(10.0);
 
             card_frame(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.set_height(120.0); // Matching height
+                ui.set_height(140.0); 
                 ui.label(RichText::new("Runtime Connectivity").strong());
                 ui.add_space(12.0);
                 ui.horizontal_centered(|ui| {
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), egui::Sense::hover());
-                    ui.painter().circle_filled(rect.center(), 5.0, COLOR_SUCCESS);
+                    status_dot(ui, docker_available);
                     ui.add_space(8.0);
-                    ui.label(RichText::new("Daemon is Online").color(COLOR_TEXT).strong());
+                    ui.label(RichText::new(if docker_available { "Daemon is Online" } else { "Daemon Offline" }).color(COLOR_TEXT).strong());
                 });
                 ui.add_space(10.0);
                 ui.label(RichText::new("API: 1.44  •  v25.0.3").size(11.0).color(COLOR_TEXT_DIM));
@@ -245,12 +259,22 @@ pub fn render_dashboard(
         });
     });
 
+    if something_changed {
+        config.save();
+    }
+
     ui.add_space(40.0);
     ui.separator();
     ui.add_space(32.0);
 
     // Services Grid
-    ui.label(RichText::new("SERVICE STACK OVERVIEW").size(9.0).color(COLOR_TEXT_MUTED).strong().extra_letter_spacing(1.2));
+    ui.horizontal(|ui| {
+        ui.add(egui::Image::new(egui::include_image!("../../assets/images/icon.png"))
+            .max_size(Vec2::new(20.0, 20.0))
+            .corner_radius(5.0));
+        ui.add_space(8.0);
+        ui.label(RichText::new("SERVICE STACK OVERVIEW").size(9.0).color(COLOR_TEXT_MUTED).strong().extra_letter_spacing(1.2));
+    });
     ui.add_space(18.0);
 
     if let Some(project) = config.active_project() {
@@ -376,17 +400,21 @@ fn service_card_compact(ui: &mut egui::Ui, name: &str, icon: &str, version: &str
 }
 
 
-/// Render the services panel (Stack)
 pub fn render_services(
     ui: &mut egui::Ui,
     config: &mut AppConfig,
     containers: &[ContainerInfo],
 ) {
-    ScrollArea::vertical().show(ui, |ui| {
-        ui.add_space(10.0);
-        ui.heading(RichText::new("Service Stack").size(28.0).color(COLOR_TEXT).strong());
-        ui.label(RichText::new("Configure your development stack").size(14.0).color(COLOR_TEXT_DIM));
-        ui.add_space(24.0);
+    let mut something_changed = false;
+    
+    ui.horizontal(|ui| {
+        ui.add(egui::Image::new(egui::include_image!("../../assets/images/icon.png"))
+            .max_size(Vec2::new(24.0, 24.0))
+            .corner_radius(6.0));
+        ui.add_space(8.0);
+        ui.label(RichText::new("SERVICE STACK CONFIGURATION").size(10.0).color(COLOR_TEXT_MUTED).strong().extra_letter_spacing(1.2));
+    });
+    ui.add_space(16.0);
 
         let registry = get_service_registry();
         let categories = vec![
@@ -407,14 +435,15 @@ pub fn render_services(
             for svc_info in services_in_cat {
                 if let Some(project) = config.active_project_mut() {
                     if let Some(svc) = project.services.get_mut(&svc_info.name) {
-                         let is_running = containers.iter().any(|c| c.name.contains(&svc_info.name) && c.state.contains("running"));
-                         
-                         egui::Frame::new()
-                            .fill(COLOR_BG_CARD)
-                            .corner_radius(egui::CornerRadius::same(12))
-                            .stroke(Stroke::new(1.0, COLOR_BORDER))
-                            .inner_margin(16.0)
-                            .show(ui, |ui| {
+                        ui.push_id(&svc_info.name, |ui| {
+                             let is_running = containers.iter().any(|c| c.name.contains(&svc_info.name) && c.state.contains("running"));
+                             
+                             egui::Frame::new()
+                                .fill(COLOR_BG_CARD)
+                                .corner_radius(egui::CornerRadius::same(12))
+                                .stroke(Stroke::new(1.0, COLOR_BORDER))
+                                .inner_margin(16.0)
+                                .show(ui, |ui| {
                                 ui.set_width(ui.available_width());
                                 ui.set_min_height(72.0); // Consistent Height
 
@@ -486,49 +515,115 @@ pub fn render_services(
                                     });
                                 });
                                 
-                                // Expandable Environment Variables (Simplified for now)
-                                if svc.enabled {
-                                     ui.add_space(8.0);
-                                     ui.collapsing("Advanced Settings", |ui| {
-                                         // Reuse existing env var grid logic but cleaner
-                                          let mut vars: Vec<(String, String)> = svc.env_vars.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-                                          vars.sort_by(|a, b| a.0.cmp(&b.0));
-                                          let mut changed = false;
-                                          
-                                          egui::Grid::new(format!("env_{}", svc_info.name)).spacing(Vec2::new(8.0, 8.0)).show(ui, |ui| {
-                                              for (i, (key, val)) in vars.iter_mut().enumerate() {
-                                                  ui.push_id(i, |ui| {
-                                                      if ui.add(egui::TextEdit::singleline(key).desired_width(140.0)).changed() { changed = true; }
-                                                  });
-                                                  ui.push_id(i+1000, |ui| {
-                                                       if ui.add(egui::TextEdit::singleline(val).desired_width(200.0)).changed() { changed = true; }
-                                                  });
-                                                  ui.end_row();
-                                              }
-                                          });
-                                          
-                                          if changed {
-                                              svc.env_vars = vars.into_iter().collect();
-                                          }
+                                // Premium Customization & Environment
+                                let adv_toggle_id = ui.id().with(format!("adv_toggle_{}", svc_info.name));
+                                let mut show_advanced = ui.data_mut(|d| d.get_temp::<bool>(adv_toggle_id).unwrap_or(false));
+                                
+                                ui.add_space(8.0);
+                                let btn_text = if show_advanced { "▼  Hide Advanced Settings" } else { "▶🛠  Customization & Environment" };
+                                if ui.selectable_label(show_advanced, RichText::new(btn_text).size(12.0).strong().color(COLOR_ACCENT)).clicked() {
+                                    show_advanced = !show_advanced;
+                                    ui.data_mut(|d| d.insert_temp(adv_toggle_id, show_advanced));
+                                }
+
+                                if show_advanced {
+                                     ui.add_space(12.0);
+                                     ui.vertical(|ui| {
+                                         // Port & Version Check
+                                         ui.horizontal(|ui| {
+                                             ui.vertical(|ui| {
+                                                 ui.label(RichText::new("Version").size(11.0).color(COLOR_TEXT_DIM));
+                                                 if ui.add(egui::TextEdit::singleline(&mut svc.version).desired_width(100.0)).changed() { something_changed = true; }
+                                             });
+                                             ui.add_space(20.0);
+                                             ui.vertical(|ui| {
+                                                 let is_available = crate::utils::is_port_available(svc.port);
+                                                 ui.horizontal(|ui| {
+                                                     ui.label(RichText::new("Host Port").size(11.0).color(COLOR_TEXT_DIM));
+                                                     ui.label(RichText::new(if is_available { "✔ Available" } else { "✘ In Use" }).size(10.0).color(if is_available { COLOR_SUCCESS } else { COLOR_ERROR }));
+                                                 });
+                                                 if ui.add(egui::DragValue::new(&mut svc.port).range(1..=65535)).changed() { something_changed = true; }
+                                             });
+                                         });
+
+                                         ui.add_space(12.0);
+                                         ui.separator();
+                                         ui.add_space(12.0);
+
+                                         // PHP Configuration
+                                         if svc_info.name == "php" {
+                                             ui.label(RichText::new("PHP Version & Extensions").strong().color(COLOR_ACCENT));
+                                             ui.horizontal(|ui| {
+                                                 ui.label("Memory Limit:");
+                                                 let mut limit = svc.settings.get("memory_limit").cloned().unwrap_or_else(|| "256M".to_string());
+                                                 if ui.add(egui::TextEdit::singleline(&mut limit).desired_width(80.0)).changed() {
+                                                     svc.settings.insert("memory_limit".to_string(), limit);
+                                                     something_changed = true;
+                                                 }
+                                             });
+                                             
+                                             let mut extensions = svc.settings.get("extensions").cloned().unwrap_or_else(|| "pdo_mysql,gd,intl".to_string());
+                                             let common_exts = vec!["pdo_mysql", "pdo_pgsql", "gd", "intl", "zip", "mbstring", "bcmath", "xml", "curl"];
+                                             ui.horizontal_wrapped(|ui| {
+                                                 let current = extensions.split(',').collect::<Vec<_>>();
+                                                 for ext in common_exts {
+                                                     let mut checked = current.contains(&ext);
+                                                     if ui.checkbox(&mut checked, ext).changed() {
+                                                         let mut list = current.iter().map(|s| s.to_string()).filter(|s| !s.is_empty()).collect::<Vec<_>>();
+                                                         if checked { if !list.contains(&ext.to_string()) { list.push(ext.to_string()); } }
+                                                         else { list.retain(|s| s != ext); }
+                                                         svc.settings.insert("extensions".to_string(), list.join(","));
+                                                         something_changed = true;
+                                                     }
+                                                 }
+                                             });
+                                             ui.add_space(8.0);
+                                             ui.separator();
+                                             ui.add_space(8.0);
+                                         }
+
+                                         // Environment Variables
+                                         ui.label(RichText::new("Environment Variables").strong());
+                                         let mut vars: Vec<(String, String)> = svc.env_vars.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                                         let mut env_changed = false;
+                                         let mut to_remove = None;
+                                         
+                                         egui::Grid::new(format!("env_{}", svc_info.name)).spacing(Vec2::new(12.0, 8.0)).show(ui, |ui| {
+                                             for (i, (key, val)) in vars.iter_mut().enumerate() {
+                                                 ui.push_id(i, |ui| {
+                                                     if ui.add(egui::TextEdit::singleline(key).desired_width(140.0).hint_text("KEY")).changed() { env_changed = true; }
+                                                     if ui.add(egui::TextEdit::singleline(val).desired_width(200.0).hint_text("VALUE")).changed() { env_changed = true; }
+                                                     if ui.button(RichText::new("🗑").color(COLOR_ERROR)).clicked() { to_remove = Some(i); env_changed = true; }
+                                                 });
+                                                 ui.end_row();
+                                             }
+                                         });
+                                         
+                                         if ui.button(RichText::new("➕ Add Variable").color(COLOR_SUCCESS)).clicked() {
+                                             vars.push(("NEW_VAR".to_string(), "VALUE".to_string()));
+                                             env_changed = true;
+                                         }
+
+                                         if let Some(idx) = to_remove { vars.remove(idx); }
+                                         if env_changed {
+                                             svc.env_vars = vars.into_iter().collect();
+                                             something_changed = true;
+                                         }
                                      });
                                 }
                             });
-                         ui.add_space(12.0);
+                        });
+                        ui.add_space(12.0);
                     }
                 }
             }
-            ui.add_space(12.0);
-        }
-    });
+    }
+    if something_changed {
+        config.save();
+    }
 }
 
 pub fn render_containers(ui: &mut egui::Ui, containers: &[ContainerInfo]) {
-    ScrollArea::vertical().show(ui, |ui| {
-        ui.add_space(10.0);
-        ui.heading(RichText::new("Containers").size(28.0).color(COLOR_TEXT).strong());
-        ui.label(RichText::new("Active Docker Containers").size(14.0).color(COLOR_TEXT_DIM));
-        ui.add_space(24.0);
-
         if containers.is_empty() {
              ui.label(RichText::new("No containers found.").color(COLOR_TEXT_MUTED));
         } else {
@@ -556,13 +651,11 @@ pub fn render_containers(ui: &mut egui::Ui, containers: &[ContainerInfo]) {
                     }
                 });
         }
-    });
 }
 
 pub fn render_logs(ui: &mut egui::Ui, logs: &[String], clear_logs: &mut bool) {
     ui.add_space(10.0);
     ui.horizontal(|ui| {
-         ui.heading(RichText::new("Logs").size(28.0).color(COLOR_TEXT).strong());
          ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
               if ui.button(RichText::new("🗑 Clear Output").size(12.0)).clicked() {
                   *clear_logs = true;

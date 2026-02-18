@@ -1,3 +1,6 @@
+use egui;
+use image;
+
 pub fn format_bytes(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
@@ -40,4 +43,26 @@ pub fn open_directory(path: &str) {
     if let Err(e) = open::that(path) {
         log::error!("Failed to open directory {}: {}", path, e);
     }
+}
+
+pub fn load_icon() -> Option<egui::IconData> {
+    let icon_data = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/images/icon.png"));
+    match image::load_from_memory(icon_data) {
+        Ok(img) => {
+            let rgba = img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            Some(egui::IconData {
+                rgba: rgba.into_raw(),
+                width,
+                height,
+            })
+        }
+        Err(e) => {
+            log::error!("Failed to load icon from memory: {}", e);
+            None
+        }
+    }
+}
+pub fn is_port_available(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
 }

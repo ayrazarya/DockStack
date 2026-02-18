@@ -1,9 +1,8 @@
-#![allow(dead_code)]
-use crossbeam_channel::{Receiver, Sender};
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
+use portable_pty::{native_pty_system, Child, CommandBuilder, PtySize};
+use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use crossbeam_channel::{Receiver, Sender};
 
 #[derive(Debug, Clone)]
 pub enum TerminalEvent {
@@ -16,7 +15,7 @@ pub struct EmbeddedTerminal {
     pub output_lines: Arc<Mutex<Vec<String>>>,
     pub event_tx: Sender<TerminalEvent>,
     pub event_rx: Receiver<TerminalEvent>,
-    child_stdin: Arc<Mutex<Option<std::process::ChildStdin>>>,
+    master_writer: Arc<Mutex<Option<Box<dyn Write + Send>>>>,
     running: Arc<Mutex<bool>>,
 }
 
@@ -27,7 +26,7 @@ impl EmbeddedTerminal {
             output_lines: Arc::new(Mutex::new(Vec::new())),
             event_tx,
             event_rx,
-            child_stdin: Arc::new(Mutex::new(None)),
+            master_writer: Arc::new(Mutex::new(None)),
             running: Arc::new(Mutex::new(false)),
         }
     }
@@ -35,130 +34,110 @@ impl EmbeddedTerminal {
     pub fn start(&self) {
         let tx = self.event_tx.clone();
         let output_lines = self.output_lines.clone();
-        let child_stdin = self.child_stdin.clone();
+        let master_writer = self.master_writer.clone();
         let running = self.running.clone();
 
         *running.lock().unwrap() = true;
 
         thread::spawn(move || {
-            let shell = if cfg!(target_os = "windows") {
-                "cmd"
-            } else {
-                "/bin/bash"
+            let pty_system = native_pty_system();
+            
+            let pair = match pty_system.openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            }) {
+                Ok(p) => p,
+                Err(e) => {
+                    *running.lock().unwrap() = false;
+                    tx.send(TerminalEvent::Error(format!("Failed to open PTY: {}", e))).ok();
+                    return;
+                }
             };
 
-            let mut cmd = Command::new(shell);
+            let shell = if cfg!(target_os = "windows") { "powershell.exe" } else { "bash" };
+            let mut cmd = CommandBuilder::new(shell);
             if !cfg!(target_os = "windows") {
-                cmd.arg("-i");
+                cmd.arg("-i"); // Interactive
             }
-            cmd.stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
+            
+            let mut child: Box<dyn Child + Send> = match pair.slave.spawn_command(cmd) {
+                Ok(c) => c,
+                Err(e) => {
+                    *running.lock().unwrap() = false;
+                    tx.send(TerminalEvent::Error(format!("Failed to spawn shell: {}", e))).ok();
+                    return;
+                }
+            };
 
-            // Set env for non-interactive mode to still get output
-            cmd.env("TERM", "dumb");
+            // Drop slave side in this process as it's now owned by the child
+            drop(pair.slave);
 
-            match cmd.spawn() {
-                Ok(mut child) => {
-                    // Store stdin handle
-                    if let Some(stdin) = child.stdin.take() {
-                        *child_stdin.lock().unwrap() = Some(stdin);
-                    }
+            // Set up writer
+            let writer = pair.master.take_writer().unwrap();
+            *master_writer.lock().unwrap() = Some(writer);
 
-                    // Read stdout
-                    if let Some(stdout) = child.stdout.take() {
-                        let reader = BufReader::new(stdout);
-                        let tx_out = tx.clone();
-                        let lines_out = output_lines.clone();
-                        let running_out = running.clone();
+            // Reader thread
+            let mut reader = pair.master.try_clone_reader().unwrap();
+            let tx_out = tx.clone();
+            let lines_out = output_lines.clone();
+            let running_out = running.clone();
 
-                        thread::spawn(move || {
-                            for line in reader.lines() {
-                                if !*running_out.lock().unwrap() {
-                                    break;
-                                }
-                                if let Ok(line) = line {
-                                    lines_out.lock().unwrap().push(line.clone());
-                                    // Keep buffer limited
-                                    {
-                                        let mut l = lines_out.lock().unwrap();
-                                        if l.len() > 2000 {
-                                            let drain = l.len() - 1500;
-                                            l.drain(0..drain);
-                                        }
+            thread::spawn(move || {
+                let mut buffer = [0u8; 4096];
+                let mut line_buffer = String::new();
+                loop {
+                    if !*running_out.lock().unwrap() { break; }
+                    match reader.read(&mut buffer) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            let data = String::from_utf8_lossy(&buffer[..n]);
+                            line_buffer.push_str(&data);
+                            
+                            if line_buffer.contains('\n') {
+                                let mut lines: Vec<String> = line_buffer.split('\n').map(|s| s.to_string()).collect();
+                                line_buffer = lines.pop().unwrap_or_default(); // Keep the last partial line
+                                
+                                let mut l = lines_out.lock().unwrap();
+                                for line in lines {
+                                    let cleaned = line.replace("\r", "");
+                                    if !cleaned.trim().is_empty() || line.len() > 2 {
+                                        l.push(cleaned);
                                     }
-                                    tx_out.send(TerminalEvent::Output(line)).ok();
+                                }
+                                
+                                if l.len() > 1000 {
+                                    let drain = l.len() - 800;
+                                    l.drain(0..drain);
                                 }
                             }
-                        });
-                    }
-
-                    // Read stderr
-                    if let Some(stderr) = child.stderr.take() {
-                        let reader = BufReader::new(stderr);
-                        let tx_err = tx.clone();
-                        let lines_err = output_lines.clone();
-                        let running_err = running.clone();
-
-                        thread::spawn(move || {
-                            for line in reader.lines() {
-                                if !*running_err.lock().unwrap() {
-                                    break;
-                                }
-                                if let Ok(line) = line {
-                                    lines_err.lock().unwrap().push(line.clone());
-                                    tx_err.send(TerminalEvent::Output(line)).ok();
-                                }
-                            }
-                        });
-                    }
-
-                    // Wait for child
-                    match child.wait() {
-                        Ok(status) => {
-                            *running.lock().unwrap() = false;
-                            tx.send(TerminalEvent::Exited(
-                                status.code().unwrap_or(-1),
-                            ))
-                            .ok();
+                            tx_out.send(TerminalEvent::Output(data.to_string())).ok();
                         }
-                        Err(e) => {
-                            *running.lock().unwrap() = false;
-                            tx.send(TerminalEvent::Error(format!(
-                                "Shell process error: {}",
-                                e
-                            )))
-                            .ok();
-                        }
+                        Err(_) => break,
                     }
+                }
+            });
+
+            // Wait for exit
+            match child.wait() {
+                Ok(_status) => {
+                    *running.lock().unwrap() = false;
+                    tx.send(TerminalEvent::Exited(0)).ok();
                 }
                 Err(e) => {
                     *running.lock().unwrap() = false;
-                    tx.send(TerminalEvent::Error(format!(
-                        "Failed to start shell: {}",
-                        e
-                    )))
-                    .ok();
+                    tx.send(TerminalEvent::Error(format!("Shell exited with error: {}", e))).ok();
                 }
             }
         });
     }
 
     pub fn send_input(&self, input: &str) {
-        if let Some(ref mut stdin) = *self.child_stdin.lock().unwrap() {
-            let input_with_newline = if input.ends_with('\n') {
-                input.to_string()
-            } else {
-                format!("{}\n", input)
-            };
-            stdin.write_all(input_with_newline.as_bytes()).ok();
-            stdin.flush().ok();
-
-            // Echo input to output
-            self.output_lines
-                .lock()
-                .unwrap()
-                .push(format!("$ {}", input.trim()));
+        if let Some(ref mut writer) = *self.master_writer.lock().unwrap() {
+            let data = if input.ends_with('\n') { input.to_string() } else { format!("{}\n", input) };
+            let _ = writer.write_all(data.as_bytes());
+            let _ = writer.flush();
         }
     }
 

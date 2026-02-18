@@ -1,4 +1,4 @@
-use egui::{Color32, Pos2, Stroke, Ui, Vec2};
+use egui::{Color32, Pos2, Stroke, Ui, Vec2, RichText};
 use crate::ui::theme::*;
 
 /// Draw a status indicator dot
@@ -163,4 +163,55 @@ pub fn toggle_switch(ui: &mut Ui, on: &mut bool) -> egui::Response {
     }
 
     response
+}
+
+/// Draw a stat card for dashboard
+pub fn stat_card(ui: &mut Ui, label: &str, value: &str, icon: &str, color: Color32) {
+    egui::Frame::new()
+        .fill(COLOR_BG_CARD)
+        .corner_radius(egui::CornerRadius::same(12))
+        .stroke(Stroke::new(1.0, COLOR_BORDER))
+        .inner_margin(egui::Margin::same(16))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                 ui.label(RichText::new(icon).size(20.0).color(color));
+                 ui.vertical(|ui| {
+                      ui.label(RichText::new(label).size(11.0).color(COLOR_TEXT_MUTED));
+                      ui.label(RichText::new(value).size(20.0).strong().color(COLOR_TEXT));
+                 });
+            });
+        });
+}
+
+/// Draw a compact service card for dashboard
+pub fn service_card_compact(ui: &mut Ui, name: &str, icon: &str, version: &str, port: u16, running: bool) {
+    egui::Frame::new()
+        .fill(COLOR_BG_CARD)
+        .corner_radius(egui::CornerRadius::same(10))
+        .stroke(Stroke::new(1.0, COLOR_BORDER))
+        .inner_margin(egui::Margin::symmetric(14, 10))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(icon.replace("\u{FE0F}", "")).size(18.0));
+                ui.add_space(8.0);
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(name).size(14.0).strong().color(COLOR_TEXT));
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(format!("v{} ● Port: {}", version, port)).size(10.0).color(COLOR_TEXT_DIM));
+                        if running {
+                             ui.add_space(8.0);
+                             ui.label(RichText::new("●").size(10.0).color(COLOR_SUCCESS));
+                        }
+                    });
+                });
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if running {
+                        ui.label(RichText::new("UP").size(9.0).strong().color(COLOR_SUCCESS));
+                    } else {
+                        ui.label(RichText::new("DOWN").size(9.0).strong().color(COLOR_TEXT_MUTED));
+                    }
+                });
+            });
+        });
 }

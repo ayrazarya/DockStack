@@ -77,9 +77,10 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
                 s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_php", project.id)));
                 s.insert(y_str("restart"), y_str("unless-stopped"));
 
-                let vols = vec![
-                    YamlVal::String(format!("{}:/var/www/html", project.directory)),
+                let mut vols = vec![
+                    YamlVal::String(format!("{}/www:/var/www/html", project.directory)),
                 ];
+                vols.push(YamlVal::String(format!("{}/php/php.ini:/usr/local/etc/php/conf.d/dockstack.ini", project.directory)));
                 s.insert(y_str("volumes"), YamlVal::Sequence(vols));
 
                 let nets = vec![YamlVal::String(network_name.clone())];
@@ -97,7 +98,7 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
                 s.insert(y_str("ports"), YamlVal::Sequence(ports));
 
                 let vols = vec![
-                    YamlVal::String(format!("{}:/usr/local/apache2/htdocs/", project.directory)),
+                    YamlVal::String(format!("{}/www:/usr/local/apache2/htdocs/", project.directory)),
                     YamlVal::String("./apache/httpd.conf:/usr/local/apache2/conf/httpd.conf".to_string()),
                 ];
                 s.insert(y_str("volumes"), YamlVal::Sequence(vols));
@@ -120,7 +121,7 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
                 s.insert(y_str("ports"), YamlVal::Sequence(ports));
 
                 let mut vols = vec![
-                    YamlVal::String(format!("{}:/usr/share/nginx/html", project.directory)),
+                    YamlVal::String(format!("{}/www:/usr/share/nginx/html", project.directory)),
                     YamlVal::String("./nginx/default.conf:/etc/nginx/conf.d/default.conf".to_string()),
                 ];
                 if project.ssl_enabled {
@@ -268,7 +269,37 @@ pub fn write_compose_file(project: &ProjectConfig) -> std::io::Result<String> {
     // Write default index.php if directory is empty
     write_default_index(project)?;
 
+    // Write php config if php is enabled
+    if project.services.get("php").map_or(false, |s| s.enabled) {
+        write_php_config(project)?;
+    }
+
     Ok(path.to_string_lossy().to_string())
+}
+
+fn write_php_config(project: &ProjectConfig) -> std::io::Result<()> {
+    let php_dir = Path::new(&project.directory).join("php");
+    fs::create_dir_all(&php_dir)?;
+    
+    let ini_path = php_dir.join("php.ini");
+    let svc = project.services.get("php").unwrap();
+    
+    let mem_limit = svc.settings.get("memory_limit").cloned().unwrap_or_else(|| "256M".to_string());
+    let extensions = svc.settings.get("extensions").cloned().unwrap_or_else(|| "".to_string());
+    
+    let mut content = format!("memory_limit = {}\n", mem_limit);
+    content.push_str("upload_max_filesize = 100M\n");
+    content.push_str("post_max_size = 100M\n");
+    content.push_str("max_execution_time = 300\n");
+    content.push_str("display_errors = On\n");
+    content.push_str("error_reporting = E_ALL\n");
+    
+    // Note: Extensions in docker-php image usually need docker-php-ext-install but some basic ones can be loaded if they are shared.
+    // However, for this to be 'Easy', we might need to use a richer image or dynamic installation.
+    // For now, we setting up the INI for things that can be configured there.
+    
+    fs::write(ini_path, content)?;
+    Ok(())
 }
 
 fn write_nginx_config(project: &ProjectConfig) -> std::io::Result<()> {
@@ -276,15 +307,15 @@ fn write_nginx_config(project: &ProjectConfig) -> std::io::Result<()> {
     fs::create_dir_all(&nginx_dir)?;
 
     let config = if project.ssl_enabled {
-        r#"server {
+        format!(r#"server {{
     listen 80;
-    server_name localhost;
+    server_name {};
     return 301 https://$server_name$request_uri;
-}
+}}
 
-server {
+server {{
     listen 443 ssl;
-    server_name localhost;
+    server_name {};
 
     ssl_certificate /etc/nginx/certs/server.crt;
     ssl_certificate_key /etc/nginx/certs/server.key;
@@ -292,47 +323,41 @@ server {
     root /usr/share/nginx/html;
     index index.php index.html;
 
-    location / {
+    location / {{
         try_files $uri $uri/ /index.php?$query_string;
-    }
+    }}
 
-    location ~ \.php$ {
+    location ~ \.php$ {{
         fastcgi_pass php:9000;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         include fastcgi_params;
-    }
-}
-"#
+    }}
+}}
+"#, project.domain, project.domain)
     } else {
-        r#"server {
+        format!(r#"server {{
     listen 80;
-    server_name localhost;
+    server_name {};
 
     root /usr/share/nginx/html;
     index index.php index.html;
 
-    location / {
+    location / {{
         try_files $uri $uri/ /index.php?$query_string;
-    }
+    }}
 
-    location ~ \.php$ {
+    location ~ \.php$ {{
         fastcgi_pass php:9000;
         fastcgi_index index.php;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         include fastcgi_params;
-    }
-}
-"#
+    }}
+}}
+"#, project.domain)
     };
 
     let config_path = nginx_dir.join("default.conf");
-    
-    // Don't overwrite if exists
-    if config_path.exists() {
-        return Ok(());
-    }
-
     fs::write(config_path, config)?;
     Ok(())
 }
@@ -343,16 +368,13 @@ fn write_apache_config(project: &ProjectConfig) -> std::io::Result<()> {
 
     let config_path = apache_dir.join("httpd.conf");
 
-    // Don't overwrite if exists
-    if config_path.exists() {
-        return Ok(());
-    }
-
     // Basic Apache 2.4 config with DirectoryIndex and .htaccess enabled
-    let config = r#"
+    let mut config = format!(r#"
 ServerRoot "/usr/local/apache2"
 Listen 80
-
+ServerName {}
+"#, project.domain);
+    config.push_str(r#"
 LoadModule mpm_event_module modules/mod_mpm_event.so
 LoadModule authz_core_module modules/mod_authz_core.so
 LoadModule authz_host_module modules/mod_authz_host.so
@@ -398,15 +420,18 @@ DocumentRoot "/usr/local/apache2/htdocs"
 <FilesMatch \.php$>
     SetHandler "proxy:fcgi://php:9000"
 </FilesMatch>
-"#;
+"#);
 
     fs::write(config_path, config)?;
     Ok(())
 }
 
 fn write_default_index(project: &ProjectConfig) -> std::io::Result<()> {
-    let index_php = Path::new(&project.directory).join("index.php");
-    let index_html = Path::new(&project.directory).join("index.html");
+    let www_dir = Path::new(&project.directory).join("www");
+    fs::create_dir_all(&www_dir)?;
+
+    let index_php = www_dir.join("index.php");
+    let index_html = www_dir.join("index.html");
 
     if !index_php.exists() && !index_html.exists() {
         let content = format!(r#"<!DOCTYPE html>

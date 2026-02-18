@@ -39,6 +39,7 @@ pub struct DockStackApp {
 
 impl DockStackApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        egui_extras::install_image_loaders(&cc.egui_ctx);
         theme::apply_theme(&cc.egui_ctx);
 
         let config = AppConfig::load();
@@ -89,8 +90,14 @@ impl DockStackApp {
                 }
                 DockerEvent::StatusChange(_, _status) => {}
                 DockerEvent::Log(_) => {}
-                DockerEvent::ContainerList(_) => {}
-                DockerEvent::Error(_) => {}
+                DockerEvent::ContainerList(_list) => {
+                    // Update our monitor stats and analytic history
+                    // The main container list is already updated via Mutex in DockerManager,
+                    // but we sync it here to trigger UI updates if necessary.
+                }
+                DockerEvent::Error(e) => {
+                    log::error!("Docker error: {}", e);
+                }
             }
         }
     }
@@ -157,19 +164,24 @@ impl DockStackApp {
                 Tab::Monitor => ("📊", "Live Analytics"),
                 Tab::Settings => ("⚙️", "Settings"),
             };
-            
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                     ui.label(RichText::new(icon).size(24.0));
-                     ui.label(
-                        egui::RichText::new(title)
-                            .size(24.0)
-                            .strong()
-                            .color(theme::COLOR_TEXT)
-                    );
+                        ui.horizontal(|ui| {
+                ui.add(egui::Image::new(egui::include_image!("../../assets/images/icon.png"))
+                    .max_size(Vec2::new(32.0, 32.0))
+                    .corner_radius(8.0));
+                ui.add_space(12.0);
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                         ui.label(RichText::new(icon).size(20.0));
+                         ui.label(
+                            egui::RichText::new(title)
+                                .size(24.0)
+                                .strong()
+                                .color(theme::COLOR_TEXT)
+                        );
+                    });
+                    ui.label(RichText::new("Manage your containerized dev environment with ease").size(12.0).color(theme::COLOR_TEXT_DIM));
                 });
-                ui.label(RichText::new("Manage your containerized dev environment with ease").size(12.0).color(theme::COLOR_TEXT_DIM));
-            });
+             });
 
             // Global Actions (Right aligned)
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -236,7 +248,9 @@ impl eframe::App for DockStackApp {
 
         // Init tray (only once)
         if !self.tray_initialized {
-            log::warn!("System tray temporarily disabled for debugging");
+            if let Err(e) = self.tray.setup() {
+                log::error!("Failed to initialize system tray: {}", e);
+            }
             self.tray_initialized = true;
         }
 
@@ -272,9 +286,10 @@ impl eframe::App for DockStackApp {
         egui::SidePanel::left("sidebar")
             .exact_width(220.0) 
             .resizable(false)
+            .show_separator_line(false)
             .frame(egui::Frame::new()
                 .fill(theme::COLOR_BG_PANEL)
-                .stroke(egui::Stroke::new(1.0, theme::COLOR_BORDER))
+                .stroke(egui::Stroke::NONE) // Remove stroke
                 .inner_margin(egui::Margin::symmetric(12, 0)))
             .show(ctx, |ui| {
                 let status = self.docker.status.lock().unwrap().clone();
@@ -283,14 +298,15 @@ impl eframe::App for DockStackApp {
 
 
         // Modern Central Panel
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.set_enabled(true);
-            
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(theme::COLOR_BG_APP))
+            .show(ctx, |ui| {
             ScrollArea::vertical()
                 .auto_shrink([false; 2])
                 .show(ui, |ui| {
                     egui::Frame::new()
-                        .inner_margin(egui::Margin::same(32))
+                        .inner_margin(egui::Margin::symmetric(32, 24)) // Keep inner margin for content
+                        .stroke(egui::Stroke::NONE) // Remove stroke from this frame
                         .show(ui, |ui| {
                     // Integrated Header
                     self.render_header(ui);
@@ -302,7 +318,7 @@ impl eframe::App for DockStackApp {
                         Tab::Dashboard => {
                             panels::render_dashboard(
                                 ui,
-                                &self.config,
+                                &mut self.config,
                                 &self.docker.status.lock().unwrap().clone(),
                                 &self.sys_stats,
                                 &containers,

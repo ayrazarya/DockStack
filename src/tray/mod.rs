@@ -59,10 +59,15 @@ impl SystemTray {
         let open_id = open_item.id().clone();
         let quit_id = quit_item.id().clone();
 
-        // Create a simple 16x16 RGBA icon (green square for "running" indicator)
-        let icon_rgba = create_tray_icon_data();
-        let icon = tray_icon::Icon::from_rgba(icon_rgba, 16, 16)
-            .map_err(|e| format!("Failed to create icon: {}", e))?;
+        // Use the app icon if available, otherwise fallback to generated icon
+        let icon = if let Some(icon_data) = crate::utils::load_icon() {
+            tray_icon::Icon::from_rgba(icon_data.rgba, icon_data.width, icon_data.height)
+                .map_err(|e| format!("Failed to create tray icon: {}", e))?
+        } else {
+            let icon_rgba = create_tray_icon_data();
+            tray_icon::Icon::from_rgba(icon_rgba, 16, 16)
+                .map_err(|e| format!("Failed to create fallback icon: {}", e))?
+        };
 
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
