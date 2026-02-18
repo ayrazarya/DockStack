@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build - ${{ matrix.platform.os }}
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bin: dockstack
+            name: dockstack-linux-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: dockstack.exe
+            name: dockstack-windows-x64.exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bin: dockstack
+            name: dockstack-macos-x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libglib2.0-dev libgdk-pixbuf-2.0-dev libatk1.0-dev libpango1.0-dev libcairo2-dev libssl-dev libxdo-dev pkg-config
+
+      - name: Rust setup
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.platform.target }}
+
+      - name: Rename and move binary
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          mv target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} artifacts/${{ matrix.platform.name }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform.name }}
+          path: artifacts/${{ matrix.platform.name }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          body: |
+            ## DockStack v${{ github.ref_name }} - Premium UI Release
+
+            ### 🚀 Updates
+            - **Bento Box UI**: Modern, cinematic dashboard layout.
+            - **System Wellness**: Real-time monitoring with unified cards.
+            - **Performance**: Optimized Rust release builds for Linux, Windows, and macOS.
+            - **Fixes**: Comprehensive icon alignment and stability overhaul.
+
+            ### 📦 Installation
+            Download the binary for your OS and run it directly.
+            - **Linux**: `chmod +x dockstack-linux-x64` then `./dockstack-linux-x64`
+            - **Windows**: Run `dockstack-windows-x64.exe`
+            - **macOS**: `chmod +x dockstack-macos-x64` then `./dockstack-macos-x64`
+          token: ${{ secrets.GITHUB_TOKEN }}
