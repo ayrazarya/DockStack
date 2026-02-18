@@ -137,9 +137,10 @@ pub fn render_sidebar(
             _ => ("OFFLINE", COLOR_TEXT_MUTED),
         };
 
-        ui.horizontal(|ui| {
-            ui.painter().circle_filled(ui.cursor().min + Vec2::new(5.0, 5.0), 4.0, status_col);
-            ui.add_space(14.0);
+        ui.horizontal_centered(|ui| {
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(12.0, 12.0), egui::Sense::hover());
+            ui.painter().circle_filled(rect.center(), 3.5, status_col);
+            ui.add_space(8.0);
             ui.label(RichText::new(format!("SYSTEM STATUS: {}", status_text)).size(9.0).strong().color(COLOR_TEXT_MUTED));
         });
     });
