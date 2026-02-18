@@ -13,20 +13,20 @@
 
 ## 🚀 Key Features
 
-### 🛠️ Service Stack
-Manage your favorite services with a single click:
+### 🛠️ Service Stack / Environment
+Manage your favorite services with a single, high-performance interface:
 - **Databases**: PostgreSQL (12-16), MySQL (5.7-8.0), Redis (6-7)
-- **Web Servers**: Nginx, Apache
+- **Web Servers**: Nginx (🌐), Apache (🎯)
 - **Runtimes**: PHP-FPM (7.4-8.3)
 - **Tools**: phpMyAdmin, pgAdmin, Adminer
-- **Security**: Auto-generated Self-Signed SSL
+- **Security**: Auto-generated local SSL/HTTPS reverse proxy
 
 ### 🌟 Advanced Capabilities
-- **Embedded Terminal**: Run shell commands directly within the app.
-- **Port Scanner**: Detect port conflicts before they happen and suggest alternatives.
-- **Resource Monitor**: Real-time CPU & RAM usage graphs for your system and containers.
-- **System Tray**: Run in the background, control services from the tray menu.
-- **Multi-Project**: Switch between different project configurations instantly.
+- **"Bento Box" UI**: A premium, modern dashboard designed for high information density and cinematic aesthetics.
+- **System Wellness Metrics**: Real-time monitoring of CPU, RAM, and Docker container health with beautiful, unified stat cards.
+- **Embedded Terminal**: High-performance portable PTY terminal integrated directly into the workspace.
+- **Smart Port Checker**: Automatically detects and resolves port conflicts before deployment.
+- **Deep Integration**: Native Linux integration with tray support and zero-latency UI interaction.
 
 ---
 
