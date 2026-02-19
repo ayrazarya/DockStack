@@ -6,6 +6,8 @@ use std::path::Path;
 type YamlMap = serde_yaml::Mapping;
 type YamlVal = serde_yaml::Value;
 
+const MANAGED_HEADER: &str = "# --- MANAGED BY DOCKSTACK --- #\n# Any manual changes outside this block may be overwritten unless you lock this service.\n\n";
+
 pub fn generate_compose(project: &ProjectConfig) -> String {
     let mut root = YamlMap::new();
     let mut services = YamlMap::new();
@@ -230,7 +232,30 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
                 // SSL is handled via nginx config, not as a separate service container.
                 // The SSL toggle enables HTTPS on the nginx reverse proxy.
             }
-            _ => {}
+            _ => {
+                if svc.is_custom {
+                    if let Some(img) = &svc.image {
+                        let mut s = YamlMap::new();
+                        s.insert(y_str("image"), y_str(&format!("{}:{}", img, svc.version)));
+                        s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_{}", project.id, name)));
+                        s.insert(y_str("restart"), y_str("unless-stopped"));
+
+                        let mut env = YamlMap::new();
+                        for (k, v) in &svc.env_vars {
+                            env.insert(y_str(k), y_str(v));
+                        }
+                        s.insert(y_str("environment"), YamlVal::Mapping(env));
+
+                        let ports = vec![YamlVal::String(format!("{}:{}", svc.port, svc.port))];
+                        s.insert(y_str("ports"), YamlVal::Sequence(ports));
+
+                        let nets = vec![YamlVal::String(network_name.clone())];
+                        s.insert(y_str("networks"), YamlVal::Sequence(nets));
+
+                        services.insert(y_str(name), YamlVal::Mapping(s));
+                    }
+                }
+            }
         }
     }
 
@@ -278,36 +303,51 @@ pub fn write_compose_file(project: &ProjectConfig) -> std::io::Result<String> {
 }
 
 fn write_php_config(project: &ProjectConfig) -> std::io::Result<()> {
+    let svc = project.services.get("php").unwrap();
+    if svc.is_locked { return Ok(()); }
+
     let php_dir = Path::new(&project.directory).join("php");
     fs::create_dir_all(&php_dir)?;
     
     let ini_path = php_dir.join("php.ini");
-    let svc = project.services.get("php").unwrap();
-    
+    if ini_path.exists() {
+        let existing = fs::read_to_string(&ini_path)?;
+        if !existing.contains("MANAGED BY DOCKSTACK") {
+            return Ok(());
+        }
+    }
+
     let mem_limit = svc.settings.get("memory_limit").cloned().unwrap_or_else(|| "256M".to_string());
-    let extensions = svc.settings.get("extensions").cloned().unwrap_or_else(|| "".to_string());
     
-    let mut content = format!("memory_limit = {}\n", mem_limit);
+    let mut content = MANAGED_HEADER.to_string();
+    content.push_str(&format!("memory_limit = {}\n", mem_limit));
     content.push_str("upload_max_filesize = 100M\n");
     content.push_str("post_max_size = 100M\n");
     content.push_str("max_execution_time = 300\n");
     content.push_str("display_errors = On\n");
     content.push_str("error_reporting = E_ALL\n");
     
-    // Note: Extensions in docker-php image usually need docker-php-ext-install but some basic ones can be loaded if they are shared.
-    // However, for this to be 'Easy', we might need to use a richer image or dynamic installation.
-    // For now, we setting up the INI for things that can be configured there.
-    
     fs::write(ini_path, content)?;
     Ok(())
 }
 
 fn write_nginx_config(project: &ProjectConfig) -> std::io::Result<()> {
+    let svc = project.services.get("nginx").unwrap();
+    if svc.is_locked { return Ok(()); }
+
     let nginx_dir = Path::new(&project.directory).join("nginx");
     fs::create_dir_all(&nginx_dir)?;
 
+    let config_path = nginx_dir.join("default.conf");
+    if config_path.exists() {
+        let existing = fs::read_to_string(&config_path)?;
+        if !existing.contains("MANAGED BY DOCKSTACK") {
+            return Ok(());
+        }
+    }
+
     let config = if project.ssl_enabled {
-        format!(r#"server {{
+        format!(r#"{}server {{
     listen 80;
     server_name {};
     return 301 https://$server_name$request_uri;
@@ -334,9 +374,9 @@ server {{
         include fastcgi_params;
     }}
 }}
-"#, project.domain, project.domain)
+"#, MANAGED_HEADER, project.domain, project.domain)
     } else {
-        format!(r#"server {{
+        format!(r#"{}server {{
     listen 80;
     server_name {};
 
@@ -354,26 +394,34 @@ server {{
         include fastcgi_params;
     }}
 }}
-"#, project.domain)
+"#, MANAGED_HEADER, project.domain)
     };
 
-    let config_path = nginx_dir.join("default.conf");
     fs::write(config_path, config)?;
     Ok(())
 }
 
 fn write_apache_config(project: &ProjectConfig) -> std::io::Result<()> {
+    let svc = project.services.get("apache").unwrap();
+    if svc.is_locked { return Ok(()); }
+
     let apache_dir = Path::new(&project.directory).join("apache");
     fs::create_dir_all(&apache_dir)?;
 
     let config_path = apache_dir.join("httpd.conf");
+    if config_path.exists() {
+        let existing = fs::read_to_string(&config_path)?;
+        if !existing.contains("MANAGED BY DOCKSTACK") {
+            return Ok(());
+        }
+    }
 
     // Basic Apache 2.4 config with DirectoryIndex and .htaccess enabled
-    let mut config = format!(r#"
+    let mut config = format!(r#"{}
 ServerRoot "/usr/local/apache2"
 Listen 80
 ServerName {}
-"#, project.domain);
+"#, MANAGED_HEADER, project.domain);
     config.push_str(r#"
 LoadModule mpm_event_module modules/mod_mpm_event.so
 LoadModule authz_core_module modules/mod_authz_core.so

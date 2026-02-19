@@ -18,6 +18,7 @@ pub enum ServiceCategory {
     Admin,
     Cache,
     Security,
+    Custom,
 }
 
 impl ServiceCategory {
@@ -29,6 +30,7 @@ impl ServiceCategory {
             Self::Admin => "🔧 Admin Tools",
             Self::Cache => "💾 Cache",
             Self::Security => "🔒 Security",
+            Self::Custom => "🧩 Custom Services",
         }
     }
 }

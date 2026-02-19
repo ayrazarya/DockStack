@@ -42,6 +42,14 @@ pub struct ServiceConfig {
     pub enabled: bool,
     pub port: u16,
     pub version: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub image: Option<String>, // For custom services
+    #[serde(default)]
+    pub is_custom: bool,       // Flag for user-added services
+    #[serde(default)]
+    pub is_locked: bool,       // If true, DockStack won't regenerate its config files
     pub env_vars: HashMap<String, String>,
     pub settings: HashMap<String, String>,
 }
@@ -71,6 +79,10 @@ impl Default for ProjectConfig {
             "postgresql".to_string(),
             ServiceConfig {
                 enabled: false,
+                is_custom: false,
+                is_locked: false,
+                display_name: None,
+                image: None,
                 port: 5432,
                 version: "16".to_string(),
                 env_vars: {
@@ -88,6 +100,10 @@ impl Default for ProjectConfig {
             "mysql".to_string(),
             ServiceConfig {
                 enabled: false,
+                is_custom: false,
+                is_locked: false,
+                display_name: None,
+                image: None,
                 port: 3306,
                 version: "8.0".to_string(),
                 env_vars: {
@@ -104,6 +120,10 @@ impl Default for ProjectConfig {
             "php".to_string(),
             ServiceConfig {
                 enabled: false,
+                is_custom: false,
+                is_locked: false,
+                display_name: None,
+                image: None,
                 port: 9000,
                 version: "8.3-fpm".to_string(),
                 env_vars: HashMap::new(),
@@ -120,6 +140,10 @@ impl Default for ProjectConfig {
             "apache".to_string(),
             ServiceConfig {
                 enabled: false,
+                is_custom: false,
+                is_locked: false,
+                display_name: None,
+                image: None,
                 port: 8080,
                 version: "2.4".to_string(),
                 env_vars: HashMap::new(),
@@ -131,6 +155,10 @@ impl Default for ProjectConfig {
             "nginx".to_string(),
             ServiceConfig {
                 enabled: false,
+                is_custom: false,
+                is_locked: false,
+                display_name: None,
+                image: None,
                 port: 80,
                 version: "latest".to_string(),
                 env_vars: HashMap::new(),
@@ -142,6 +170,10 @@ impl Default for ProjectConfig {
             "phpmyadmin".to_string(),
             ServiceConfig {
                 enabled: false,
+                is_custom: false,
+                is_locked: false,
+                display_name: None,
+                image: None,
                 port: 8081,
                 version: "latest".to_string(),
                 env_vars: {
@@ -158,6 +190,10 @@ impl Default for ProjectConfig {
             "pgadmin".to_string(),
             ServiceConfig {
                 enabled: false,
+                is_custom: false,
+                is_locked: false,
+                display_name: None,
+                image: None,
                 port: 8082,
                 version: "latest".to_string(),
                 env_vars: {
@@ -180,6 +216,10 @@ impl Default for ProjectConfig {
             "redis".to_string(),
             ServiceConfig {
                 enabled: false,
+                is_custom: false,
+                is_locked: false,
+                display_name: None,
+                image: None,
                 port: 6379,
                 version: "7".to_string(),
                 env_vars: HashMap::new(),
@@ -191,6 +231,10 @@ impl Default for ProjectConfig {
             "adminer".to_string(),
             ServiceConfig {
                 enabled: false,
+                is_custom: false,
+                is_locked: false,
+                display_name: None,
+                image: None,
                 port: 8083,
                 version: "latest".to_string(),
                 env_vars: HashMap::new(),
@@ -202,6 +246,10 @@ impl Default for ProjectConfig {
             "ssl".to_string(),
             ServiceConfig {
                 enabled: false,
+                is_custom: false,
+                is_locked: false,
+                display_name: None,
+                image: None,
                 port: 443,
                 version: "latest".to_string(),
                 env_vars: HashMap::new(),
@@ -306,6 +354,69 @@ impl AppConfig {
             self.active_project_id = self.projects.first().map(|p| p.id.clone());
         }
         self.save();
+    }
+
+    pub fn import_from_compose(&mut self, yaml_path: &std::path::Path) -> Result<String, Box<dyn std::error::Error>> {
+        let content = fs::read_to_string(yaml_path)?;
+        let yaml: serde_yaml::Value = serde_yaml::from_str(&content)?;
+        
+        let project_dir = yaml_path.parent().unwrap_or(std::path::Path::new("."));
+        let project_name = project_dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+        
+        let mut services = HashMap::new();
+        
+        if let Some(yaml_services) = yaml.get("services").and_then(|v| v.as_mapping()) {
+            for (name_val, svc_val) in yaml_services {
+                let name = name_val.as_str().unwrap_or("unknown").to_string();
+                let mut svc = ServiceConfig {
+                    enabled: true,
+                    is_custom: true,
+                    is_locked: false,
+                    display_name: Some(name.clone()),
+                    image: None,
+                    port: 0,
+                    version: "latest".to_string(),
+                    env_vars: HashMap::new(),
+                    settings: HashMap::new(),
+                };
+                
+                if let Some(img) = svc_val.get("image").and_then(|v| v.as_str()) {
+                    if img.contains(':') {
+                        let parts: Vec<&str> = img.split(':').collect();
+                        svc.image = Some(parts[0].to_string());
+                        svc.version = parts[1].to_string();
+                    } else {
+                        svc.image = Some(img.to_string());
+                    }
+                }
+                
+                if let Some(ports) = svc_val.get("ports").and_then(|v| v.as_sequence()) {
+                    if let Some(p_str) = ports[0].as_str() {
+                        if let Some(host_port) = p_str.split(':').next().and_then(|p| p.parse::<u16>().ok()) {
+                            svc.port = host_port;
+                        }
+                    }
+                }
+                
+                services.insert(name, svc);
+            }
+        }
+        
+        let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+        let project = ProjectConfig {
+            id: id.clone(),
+            name: format!("Imported: {}", project_name),
+            directory: project_dir.to_string_lossy().to_string(),
+            services,
+            ssl_enabled: false,
+            custom_ports: HashMap::new(),
+            domain: format!("{}.test", project_name.to_lowercase().replace(' ', "-")),
+        };
+        
+        self.projects.push(project);
+        self.active_project_id = Some(id.clone());
+        self.save();
+        Ok(id)
     }
 }
 

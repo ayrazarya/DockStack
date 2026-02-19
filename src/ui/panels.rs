@@ -1,5 +1,6 @@
 use egui::{self, Color32, RichText, ScrollArea, Vec2, Stroke, Rect, StrokeKind};
-use crate::config::AppConfig;
+use std::collections::HashMap;
+use crate::config::{AppConfig, ServiceConfig};
 use crate::docker::manager::{ContainerInfo, ServiceStatus};
 use crate::monitor::{ContainerStats, SystemStats};
 use crate::services::{get_service_registry, ServiceCategory};
@@ -64,6 +65,19 @@ pub fn render_sidebar(
                         config.save();
                         ui.close_menu();
                     }
+                }
+                ui.separator();
+                if ui.button("➕ Create New Project").clicked() {
+                    config.add_project("New Project".to_string());
+                    ui.close_menu();
+                }
+                if ui.button("📥 Import docker-compose.yml").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("Docker Compose", &["yml", "yaml"])
+                        .pick_file() {
+                            let _ = config.import_from_compose(&path);
+                    }
+                    ui.close_menu();
                 }
             });
         });
@@ -413,30 +427,87 @@ pub fn render_services(
             .corner_radius(6.0));
         ui.add_space(8.0);
         ui.label(RichText::new("SERVICE STACK CONFIGURATION").size(10.0).color(COLOR_TEXT_MUTED).strong().extra_letter_spacing(1.2));
+        
+        if let Some(project) = config.active_project() {
+            ui.label(RichText::new(format!("({})", project.services.len())).size(10.0).color(COLOR_TEXT_DIM));
+        }
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.add(egui::Button::new(RichText::new("➕ Add Custom Service").strong().color(COLOR_BG_PANEL)).fill(COLOR_ACCENT)).clicked() {
+                if let Some(project) = config.active_project_mut() {
+                    let id = uuid::Uuid::new_v4().to_string()[..4].to_string();
+                    let name = format!("custom-{}", id);
+                    project.services.insert(name.clone(), ServiceConfig {
+                        enabled: false,
+                        is_custom: true,
+                        is_locked: false,
+                        display_name: Some(name),
+                        image: Some("nginx".to_string()),
+                        port: 8080,
+                        version: "latest".to_string(),
+                        env_vars: HashMap::new(),
+                        settings: HashMap::new(),
+                    });
+                    something_changed = true;
+                }
+            }
+        });
     });
     ui.add_space(16.0);
-
-        let registry = get_service_registry();
-        let categories = vec![
+    
+    let mut service_to_remove = None;
+    let registry = get_service_registry();
+    let categories = vec![
             ServiceCategory::WebServer,
             ServiceCategory::Database,
             ServiceCategory::Runtime,
             ServiceCategory::Cache,
             ServiceCategory::Admin,
+            ServiceCategory::Security,
+            ServiceCategory::Custom,
         ];
 
         for category in categories {
-            let services_in_cat: Vec<_> = registry.iter().filter(|s| s.category == category).collect();
-            if services_in_cat.is_empty() { continue; }
+            let mut services_to_render = Vec::new();
+
+            if category == ServiceCategory::Custom {
+                if let Some(project) = config.active_project() {
+                    for (name, svc) in &project.services {
+                        if svc.is_custom {
+                            services_to_render.push((
+                                name.clone(),
+                                svc.display_name.clone().unwrap_or_else(|| name.clone()),
+                                "User-defined docker service".to_string(), // description
+                                "🧩".to_string(), // icon
+                            ));
+                        }
+                    }
+                }
+            } else {
+                for svc_info in registry.iter().filter(|s| s.category == category) {
+                    if let Some(project) = config.active_project() {
+                        if project.services.contains_key(&svc_info.name) {
+                            services_to_render.push((
+                                svc_info.name.clone(),
+                                svc_info.display_name.clone(),
+                                svc_info.description.clone(),
+                                svc_info.icon.to_string(),
+                            ));
+                        }
+                    }
+                }
+            }
+
+            if services_to_render.is_empty() { continue; }
 
             ui.label(RichText::new(category.label()).size(14.0).strong().color(COLOR_ACCENT));
             ui.add_space(8.0);
 
-            for svc_info in services_in_cat {
+            for (id, display_name, description, icon) in services_to_render {
                 if let Some(project) = config.active_project_mut() {
-                    if let Some(svc) = project.services.get_mut(&svc_info.name) {
-                        ui.push_id(&svc_info.name, |ui| {
-                             let is_running = containers.iter().any(|c| c.name.contains(&svc_info.name) && c.state.contains("running"));
+                    if let Some(svc) = project.services.get_mut(&id) {
+                        ui.push_id(&id, |ui| {
+                             let is_running = containers.iter().any(|c| c.name.contains(&id) && c.state.contains("running"));
                              
                              egui::Frame::new()
                                 .fill(COLOR_BG_CARD)
@@ -454,7 +525,7 @@ pub fn render_services(
                                     ui.painter().text(
                                         rect.center() + Vec2::new(0.0, 1.0), 
                                         egui::Align2::CENTER_CENTER, 
-                                        svc_info.icon.replace("\u{FE0F}", ""), 
+                                        icon.replace("\u{FE0F}", ""), 
                                         egui::FontId::proportional(22.0), 
                                         Color32::WHITE
                                     );
@@ -464,14 +535,14 @@ pub fn render_services(
                                     // Info
                                     ui.vertical(|ui| {
                                         ui.horizontal(|ui| {
-                                            ui.label(RichText::new(&svc_info.display_name).size(18.0).strong().color(COLOR_TEXT));
+                                            ui.label(RichText::new(&display_name).size(18.0).strong().color(COLOR_TEXT));
                                             if is_running {
                                                 ui.add_space(8.0);
                                                 ui.label(RichText::new("● RUNNING").size(10.0).color(COLOR_SUCCESS).strong());
                                             }
                                         });
                                         ui.add_space(4.0);
-                                        ui.label(RichText::new(&svc_info.description).size(13.0).color(COLOR_TEXT_DIM));
+                                        ui.label(RichText::new(&description).size(13.0).color(COLOR_TEXT_DIM));
                                     });
                                     
                                     // Controls (Right aligned)
@@ -480,35 +551,38 @@ pub fn render_services(
                                         let mut enabled = svc.enabled;
                                         if toggle_switch(ui, &mut enabled).changed() {
                                             svc.enabled = enabled;
-                                            if svc_info.name == "ssl" { project.ssl_enabled = enabled; }
+                                            if id == "ssl" { project.ssl_enabled = enabled; }
                                         }
                                         
                                         ui.add_space(24.0);
                                         
                                         // Config actions
                                         ui.menu_button(RichText::new("⚙ Config").size(13.0).color(COLOR_TEXT), |ui| {
-                                             if ui.button("Edit Environment Vars").clicked() {
-                                                 // Todo: Expand logic
-                                             }
-                                             
-                                             let config_path = match svc_info.name.as_str() {
-                                                "nginx" => Some(std::path::Path::new(&project.directory).join("nginx/default.conf")),
-                                                "apache" => Some(std::path::Path::new(&project.directory).join("apache/httpd.conf")),
-                                                "php" => Some(std::path::Path::new(&project.directory).join("php/php.ini")),
-                                                "mysql" => Some(std::path::Path::new(&project.directory).join("mysql/my.cnf")),
-                                                "postgresql" => Some(std::path::Path::new(&project.directory).join("postgresql/postgresql.conf")),
-                                                _ => None,
-                                            };
-                                            if let Some(path) = config_path {
-                                                if ui.button("Open Config File").clicked() {
-                                                     if !path.exists() {
-                                                        if let Some(parent) = path.parent() { std::fs::create_dir_all(parent).ok(); }
-                                                        std::fs::write(&path, "# Config file\n").ok();
-                                                     }
-                                                     crate::utils::open_url(&path.to_string_lossy());
+                                             if svc.is_custom {
+                                                 if ui.button(RichText::new("🗑 Remove Service").color(COLOR_ERROR)).clicked() {
+                                                     service_to_remove = Some(id.clone());
                                                      ui.close_menu();
+                                                 }
+                                             } else {
+                                                 let config_path = match id.as_str() {
+                                                    "nginx" => Some(std::path::Path::new(&project.directory).join("nginx/default.conf")),
+                                                    "apache" => Some(std::path::Path::new(&project.directory).join("apache/httpd.conf")),
+                                                    "php" => Some(std::path::Path::new(&project.directory).join("php/php.ini")),
+                                                    "mysql" => Some(std::path::Path::new(&project.directory).join("mysql/my.cnf")),
+                                                    "postgresql" => Some(std::path::Path::new(&project.directory).join("postgresql/postgresql.conf")),
+                                                    _ => None,
+                                                };
+                                                if let Some(path) = config_path {
+                                                    if ui.button("Open Config File").clicked() {
+                                                         if !path.exists() {
+                                                            if let Some(parent) = path.parent() { std::fs::create_dir_all(parent).ok(); }
+                                                            std::fs::write(&path, "# Config file\n").ok();
+                                                         }
+                                                         crate::utils::open_url(&path.to_string_lossy());
+                                                         ui.close_menu();
+                                                    }
                                                 }
-                                            }
+                                             }
                                         });
                                         
                                         ui.label(RichText::new(format!("Port: {}", svc.port)).size(13.0).color(COLOR_TEXT_MUTED).monospace());
@@ -516,7 +590,7 @@ pub fn render_services(
                                 });
                                 
                                 // Premium Customization & Environment
-                                let adv_toggle_id = ui.id().with(format!("adv_toggle_{}", svc_info.name));
+                                let adv_toggle_id = ui.id().with(format!("adv_toggle_{}", id));
                                 let mut show_advanced = ui.data_mut(|d| d.get_temp::<bool>(adv_toggle_id).unwrap_or(false));
                                 
                                 ui.add_space(8.0);
@@ -526,32 +600,92 @@ pub fn render_services(
                                     ui.data_mut(|d| d.insert_temp(adv_toggle_id, show_advanced));
                                 }
 
-                                if show_advanced {
-                                     ui.add_space(12.0);
-                                     ui.vertical(|ui| {
-                                         // Port & Version Check
-                                         ui.horizontal(|ui| {
-                                             ui.vertical(|ui| {
-                                                 ui.label(RichText::new("Version").size(11.0).color(COLOR_TEXT_DIM));
-                                                 if ui.add(egui::TextEdit::singleline(&mut svc.version).desired_width(100.0)).changed() { something_changed = true; }
-                                             });
-                                             ui.add_space(20.0);
-                                             ui.vertical(|ui| {
-                                                 let is_available = crate::utils::is_port_available(svc.port);
-                                                 ui.horizontal(|ui| {
-                                                     ui.label(RichText::new("Host Port").size(11.0).color(COLOR_TEXT_DIM));
-                                                     ui.label(RichText::new(if is_available { "✔ Available" } else { "✘ In Use" }).size(10.0).color(if is_available { COLOR_SUCCESS } else { COLOR_ERROR }));
-                                                 });
-                                                 if ui.add(egui::DragValue::new(&mut svc.port).range(1..=65535)).changed() { something_changed = true; }
-                                             });
-                                         });
+                                 if show_advanced {
+                                      ui.add_space(8.0);
+                                      ui.vertical(|ui| {
+                                                  egui::Frame::new()
+                                                      .fill(COLOR_BG_PANEL)
+                                                      .corner_radius(egui::CornerRadius::same(8))
+                                                      .inner_margin(16.0)
+                                                      .show(ui, |ui| {
+                                                          ui.set_width(ui.available_width()); // Stretch to full width
+                                                          
+                                                          egui::Grid::new(format!("grid_{}", id))
+                                                              .spacing(Vec2::new(60.0, 16.0))
+                                                              .show(ui, |ui| {
+                                                                  // Column 1: Identity
+                                                                  ui.vertical(|ui| {
+                                                                      if svc.is_custom {
+                                                                          ui.label(RichText::new("Display Name").size(11.0).color(COLOR_TEXT_DIM));
+                                                                          ui.add_space(4.0);
+                                                                          let mut name = svc.display_name.clone().unwrap_or_else(|| id.clone());
+                                                                          if ui.add(egui::TextEdit::singleline(&mut name).desired_width(280.0)).changed() {
+                                                                              svc.display_name = Some(name);
+                                                                              something_changed = true;
+                                                                          }
+                                                                      } else {
+                                                                          ui.label(RichText::new("Service ID").size(11.0).color(COLOR_TEXT_DIM));
+                                                                          ui.add_space(4.0);
+                                                                          ui.label(RichText::new(&id).strong().color(COLOR_PRIMARY));
+                                                                      }
+                                                                  });
 
-                                         ui.add_space(12.0);
-                                         ui.separator();
-                                         ui.add_space(12.0);
+                                                                  // Column 2: Docker Image
+                                                                  ui.vertical(|ui| {
+                                                                      ui.label(RichText::new("Docker Image").size(11.0).color(COLOR_TEXT_DIM));
+                                                                      ui.add_space(4.0);
+                                                                      if svc.is_custom {
+                                                                          let mut img = svc.image.clone().unwrap_or_default();
+                                                                          if ui.add(egui::TextEdit::singleline(&mut img).desired_width(350.0)).changed() {
+                                                                              svc.image = Some(img);
+                                                                              something_changed = true;
+                                                                          }
+                                                                      } else {
+                                                                          ui.label(RichText::new(svc.image.as_ref().unwrap_or(&id)).strong().color(COLOR_ACCENT));
+                                                                      }
+                                                                  });
+
+                                                                  // Column 3: Version
+                                                                  ui.vertical(|ui| {
+                                                                      ui.label(RichText::new("Version").size(11.0).color(COLOR_TEXT_DIM));
+                                                                      ui.add_space(4.0);
+                                                                      if ui.add(egui::TextEdit::singleline(&mut svc.version).desired_width(100.0)).changed() {
+                                                                          something_changed = true;
+                                                                      }
+                                                                  });
+
+                                                                  // Column 4: Port
+                                                                  ui.vertical(|ui| {
+                                                                      let is_available = crate::utils::is_port_available(svc.port);
+                                                                      ui.horizontal(|ui| {
+                                                                          ui.label(RichText::new("Host Port").size(11.0).color(COLOR_TEXT_DIM));
+                                                                          ui.add_space(4.0);
+                                                                          ui.label(RichText::new(if is_available { "✔" } else { "✘" }).size(10.0).color(if is_available { COLOR_SUCCESS } else { COLOR_ERROR }));
+                                                                      });
+                                                                      ui.add_space(4.0);
+                                                                      if ui.add(egui::DragValue::new(&mut svc.port).range(1..=65535)).changed() {
+                                                                          something_changed = true;
+                                                                      }
+                                                                  });
+
+                                                                  // Column 5: Lock Configuration
+                                                                  ui.vertical(|ui| {
+                                                                      ui.label(RichText::new("Lock Config").size(11.0).color(COLOR_TEXT_DIM));
+                                                                      ui.add_space(8.0);
+                                                                      if ui.checkbox(&mut svc.is_locked, "").on_hover_text("If locked, DockStack won't overwrite your manual changes to config files").changed() {
+                                                                          something_changed = true;
+                                                                      }
+                                                                  });
+                                                                  ui.end_row();
+                                                              });
+                                                      });
+
+                                          ui.add_space(8.0);
+                                          ui.separator();
+                                          ui.add_space(8.0);
 
                                          // PHP Configuration
-                                         if svc_info.name == "php" {
+                                         if id == "php" {
                                              ui.label(RichText::new("PHP Version & Extensions").strong().color(COLOR_ACCENT));
                                              ui.horizontal(|ui| {
                                                  ui.label("Memory Limit:");
@@ -562,7 +696,7 @@ pub fn render_services(
                                                  }
                                              });
                                              
-                                             let mut extensions = svc.settings.get("extensions").cloned().unwrap_or_else(|| "pdo_mysql,gd,intl".to_string());
+                                             let extensions = svc.settings.get("extensions").cloned().unwrap_or_else(|| "pdo_mysql,gd,intl".to_string());
                                              let common_exts = vec!["pdo_mysql", "pdo_pgsql", "gd", "intl", "zip", "mbstring", "bcmath", "xml", "curl"];
                                              ui.horizontal_wrapped(|ui| {
                                                  let current = extensions.split(',').collect::<Vec<_>>();
@@ -582,13 +716,41 @@ pub fn render_services(
                                              ui.add_space(8.0);
                                          }
 
+                                         // Database Configuration
+                                         if id == "mysql" || id == "postgresql" {
+                                              let root_key = if id == "mysql" { "MYSQL_ROOT_PASSWORD" } else { "POSTGRES_PASSWORD" };
+                                              let db_key = if id == "mysql" { "MYSQL_DATABASE" } else { "POSTGRES_DB" };
+                                              
+                                              ui.label(RichText::new("Database Settings").strong().color(COLOR_ACCENT));
+                                              egui::Grid::new("db_settings").show(ui, |ui| {
+                                                  ui.label("Root Password:");
+                                                  let mut pass = svc.env_vars.get(root_key).cloned().unwrap_or_default();
+                                                  if ui.add(egui::TextEdit::singleline(&mut pass)).changed() {
+                                                      svc.env_vars.insert(root_key.to_string(), pass);
+                                                      something_changed = true;
+                                                  }
+                                                  ui.end_row();
+                                                  
+                                                  ui.label("Database Name:");
+                                                  let mut db = svc.env_vars.get(db_key).cloned().unwrap_or_default();
+                                                  if ui.add(egui::TextEdit::singleline(&mut db)).changed() {
+                                                      svc.env_vars.insert(db_key.to_string(), db);
+                                                      something_changed = true;
+                                                  }
+                                                  ui.end_row();
+                                              });
+                                              ui.add_space(8.0);
+                                              ui.separator();
+                                              ui.add_space(8.0);
+                                         }
+
                                          // Environment Variables
                                          ui.label(RichText::new("Environment Variables").strong());
                                          let mut vars: Vec<(String, String)> = svc.env_vars.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                                          let mut env_changed = false;
                                          let mut to_remove = None;
                                          
-                                         egui::Grid::new(format!("env_{}", svc_info.name)).spacing(Vec2::new(12.0, 8.0)).show(ui, |ui| {
+                                         egui::Grid::new(format!("env_{}", id)).spacing(Vec2::new(12.0, 8.0)).show(ui, |ui| {
                                              for (i, (key, val)) in vars.iter_mut().enumerate() {
                                                  ui.push_id(i, |ui| {
                                                      if ui.add(egui::TextEdit::singleline(key).desired_width(140.0).hint_text("KEY")).changed() { env_changed = true; }
@@ -618,6 +780,14 @@ pub fn render_services(
                 }
             }
     }
+
+    if let Some(id) = service_to_remove {
+        if let Some(project) = config.active_project_mut() {
+            project.services.remove(&id);
+            something_changed = true;
+        }
+    }
+
     if something_changed {
         config.save();
     }
