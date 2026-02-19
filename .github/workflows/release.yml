@@ -77,17 +77,30 @@ jobs:
         with:
           files: artifacts/**/*
           body: |
-            ## DockStack v${{ github.ref_name }}
+            ## DockStack v${{ github.ref_name }} — The Next Generation
 
-            ### Technical Updates
-            - **Bento Interface Implementation**: New dashboard architecture for high information density.
-            - **System Resource Monitoring**: Integration of real-time metrics for CPU, memory, and instances.
-            - **Cross-Platform Compilation**: Optimized release binaries for Linux, Windows, and macOS.
-            - **Stability Enhancements**: Comprehensive UI alignment and rendering stability overhaul.
+            This release brings major enhancements to project management and Docker integration, providing a more robust and flexible environment for container orchestration.
 
-            ### Installation Instructions
-            Execute the binary corresponding to the host operating system.
-            - **Linux**: chmod +x dockstack-linux-x64 && ./dockstack-linux-x64
-            - **Windows**: Execute dockstack-windows-x64.exe
-            - **macOS**: chmod +x dockstack-macos-x64 && ./dockstack-macos-x64
+            ### 🚀 New Features
+            - **Project Creation & Import**: Effortlessly create new projects or import existing `docker-compose.yml` configurations.
+            - **Custom Service Management**: Full control over adding and managing bespoke services within your stack.
+            - **Domain Configuration**: Easily manage hostnames and domains for your containerized applications.
+            - **Service-Specific Settings**: Fine-tune individual services with dedicated configuration panels.
+
+            ### 🛠 Technical Improvements
+            - **Terminal Evolution**: Refactored internal terminal architecture using `portable_pty` for better cross-platform compatibility.
+            - **Bento Interface 2.0**: Enhanced dashboard layout for improved information density and visual clarity.
+            - **System Resource Monitoring**: Real-time tracking of CPU, RAM, and instance health.
+            - **Performance Overhaul**: Optimized rendering logic and state management for a snappier experience.
+
+            ### 🎨 UI & Aesthetics
+            - **App Icon Integration**: New official DockStack branding across the UI.
+            - **Theme Refinement**: Polished typography and glassmorphism effects for a premium feel.
+
+            ### 📦 Installation
+            Download the binary for your platform and follow the instructions:
+            - **Linux**: `chmod +x dockstack-linux-x64 && ./dockstack-linux-x64`
+            - **Windows**: Run `dockstack-windows-x64.exe`
+            - **macOS**: `chmod +x dockstack-macos-x64 && ./dockstack-macos-x64`
+
           token: ${{ secrets.GITHUB_TOKEN }}
