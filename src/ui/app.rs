@@ -123,7 +123,7 @@ impl DockStackApp {
         }
     }
 
-    fn process_tray_events(&mut self) {
+    fn process_tray_events(&mut self, ctx: &egui::Context) {
         while let Ok(cmd) = self.tray.command_rx.try_recv() {
             match cmd {
                 TrayCommand::Start => {
@@ -145,7 +145,8 @@ impl DockStackApp {
                     // Window focus is handled by the framework
                 }
                 TrayCommand::Quit => {
-                    std::process::exit(0);
+                    log::info!("Quit requested from system tray, initiating graceful shutdown...");
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             }
         }
@@ -244,7 +245,7 @@ impl eframe::App for DockStackApp {
         self.process_docker_events();
         self.process_monitor_events();
         self.process_terminal_events();
-        self.process_tray_events();
+        self.process_tray_events(ctx);
 
         // Init tray (only once)
         if !self.tray_initialized {
@@ -424,5 +425,28 @@ impl eframe::App for DockStackApp {
                 });
             });
         });
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        log::info!("DockStack shutting down gracefully...");
+
+        // Save current configuration to disk
+        log::info!("Saving configuration...");
+        self.config.save();
+
+        // Stop running Docker containers if services are active
+        let status = self.docker.status.lock().unwrap().clone();
+        if matches!(status, ServiceStatus::Running | ServiceStatus::Starting) {
+            log::info!("Stopping running Docker containers...");
+            if let Some(project) = self.config.active_project() {
+                self.docker.stop_services(project);
+
+                // Wait briefly for the stop command to be dispatched
+                // (stop_services spawns a thread, give it time to start)
+                std::thread::sleep(std::time::Duration::from_secs(3));
+            }
+        }
+
+        log::info!("DockStack shutdown complete.");
     }
 }

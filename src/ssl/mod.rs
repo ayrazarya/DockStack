@@ -4,6 +4,7 @@ use std::process::Command;
 
 pub struct SslManager;
 
+#[allow(dead_code)]
 impl SslManager {
     /// Generate self-signed SSL certificate
     pub fn generate_self_signed(project_dir: &str) -> Result<(String, String), String> {

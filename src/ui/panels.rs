@@ -234,7 +234,7 @@ pub fn render_dashboard(
                             something_changed = true;
                         }
                         if ui.button("📋").clicked() {
-                            ui.output_mut(|o| o.copied_text = format!("127.0.0.1  {}", project.domain));
+                            ui.ctx().copy_text(format!("127.0.0.1  {}", project.domain));
                         }
                     });
 

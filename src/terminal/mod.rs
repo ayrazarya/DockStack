@@ -5,6 +5,7 @@ use std::thread;
 use crossbeam_channel::{Receiver, Sender};
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum TerminalEvent {
     Output(String),
     Error(String),

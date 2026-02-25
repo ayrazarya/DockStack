@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use egui::{Color32, Pos2, Stroke, Ui, Vec2, RichText};
 use crate::ui::theme::*;
 
