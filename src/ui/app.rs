@@ -27,8 +27,8 @@ pub struct DockStackApp {
     port_infos: Vec<PortInfo>,
     sys_stats: SystemStats,
     container_stats: Vec<ContainerStats>,
-    cpu_history: Vec<f32>,
-    mem_history: Vec<f32>,
+    cpu_history: std::collections::VecDeque<f32>,
+    mem_history: std::collections::VecDeque<f32>,
 
     // Flags
     docker_available: bool,
@@ -73,8 +73,8 @@ impl DockStackApp {
             port_infos,
             sys_stats: SystemStats::default(),
             container_stats: Vec::new(),
-            cpu_history: vec![0.0; 60],
-            mem_history: vec![0.0; 60],
+            cpu_history: std::collections::VecDeque::from(vec![0.0; 60]),
+            mem_history: std::collections::VecDeque::from(vec![0.0; 60]),
             docker_available: false,
             tray_initialized: false,
             _last_refresh: Instant::now(),
@@ -312,36 +312,36 @@ impl eframe::App for DockStackApp {
                     // Integrated Header
                     self.render_header(ui);
                     
-                    let containers = self.docker.containers.lock().unwrap().clone();
-                    let logs = self.docker.logs.lock().unwrap().clone();
-
                     match self.active_tab {
                         Tab::Dashboard => {
+                            let status = self.docker.status.lock().unwrap().clone();
                             panels::render_dashboard(
                                 ui,
                                 &mut self.config,
-                                &self.docker.status.lock().unwrap().clone(),
+                                &status,
                                 &self.sys_stats,
-                                &containers,
+                                &self.docker.containers.lock().unwrap(),
                                 self.docker_available,
                             );
                         }
 
                         Tab::Services => {
-                            panels::render_services(ui, &mut self.config, &containers);
+                            panels::render_services(ui, &mut self.config, &self.docker.containers.lock().unwrap());
                         }
                         Tab::Containers => {
-                            panels::render_containers(ui, &containers);
+                            panels::render_containers(ui, &self.docker.containers.lock().unwrap());
                         }
                         Tab::Logs => {
                             let mut clear = false;
-                            panels::render_logs(ui, &logs, &mut clear);
+                            let mut logs_guard = self.docker.logs.lock().unwrap();
+                            panels::render_logs(ui, logs_guard.make_contiguous(), &mut clear);
                             if clear {
-                                self.docker.clear_logs();
+                                logs_guard.clear();
                             }
                         }
                         Tab::Terminal => {
-                            let term_lines = self.terminal.output_lines.lock().unwrap().clone();
+                            let mut term_lines_guard = self.terminal.output_lines.lock().unwrap();
+                            let term_lines = term_lines_guard.make_contiguous();
                             let mut send = false;
                             let mut clear = false;
                             let mut start = false;
@@ -349,7 +349,7 @@ impl eframe::App for DockStackApp {
 
                             panels::render_terminal(
                                 ui,
-                                &term_lines,
+                                term_lines,
                                 &mut self.terminal_input,
                                 &mut send,
                                 &mut clear,
@@ -366,7 +366,7 @@ impl eframe::App for DockStackApp {
                                 self.terminal_input.clear();
                             }
                             if clear {
-                                self.terminal.clear();
+                                term_lines_guard.clear();
                             }
                         }
                         Tab::Ports => {
@@ -386,8 +386,8 @@ impl eframe::App for DockStackApp {
                                 ui,
                                 &self.sys_stats,
                                 &self.container_stats,
-                                &self.cpu_history,
-                                &self.mem_history,
+                                self.cpu_history.make_contiguous(),
+                                self.mem_history.make_contiguous(),
                             );
                         }
                         Tab::Settings => {
@@ -439,11 +439,7 @@ impl eframe::App for DockStackApp {
         if matches!(status, ServiceStatus::Running | ServiceStatus::Starting) {
             log::info!("Stopping running Docker containers...");
             if let Some(project) = self.config.active_project() {
-                self.docker.stop_services(project);
-
-                // Wait briefly for the stop command to be dispatched
-                // (stop_services spawns a thread, give it time to start)
-                std::thread::sleep(std::time::Duration::from_secs(3));
+                self.docker.stop_services_sync(project);
             }
         }
 

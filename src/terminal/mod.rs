@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use crossbeam_channel::{Receiver, Sender};
+use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -13,7 +14,7 @@ pub enum TerminalEvent {
 }
 
 pub struct EmbeddedTerminal {
-    pub output_lines: Arc<Mutex<Vec<String>>>,
+    pub output_lines: Arc<Mutex<VecDeque<String>>>,
     pub event_tx: Sender<TerminalEvent>,
     pub event_rx: Receiver<TerminalEvent>,
     master_writer: Arc<Mutex<Option<Box<dyn Write + Send>>>>,
@@ -24,7 +25,7 @@ impl EmbeddedTerminal {
     pub fn new() -> Self {
         let (event_tx, event_rx) = crossbeam_channel::unbounded();
         Self {
-            output_lines: Arc::new(Mutex::new(Vec::new())),
+            output_lines: Arc::new(Mutex::new(VecDeque::new())),
             event_tx,
             event_rx,
             master_writer: Arc::new(Mutex::new(None)),
@@ -104,7 +105,7 @@ impl EmbeddedTerminal {
                                 for line in lines {
                                     let cleaned = line.replace("\r", "");
                                     if !cleaned.trim().is_empty() || line.len() > 2 {
-                                        l.push(cleaned);
+                                        l.push_back(cleaned);
                                     }
                                 }
                                 
@@ -144,9 +145,5 @@ impl EmbeddedTerminal {
 
     pub fn is_running(&self) -> bool {
         *self.running.lock().unwrap()
-    }
-
-    pub fn clear(&self) {
-        self.output_lines.lock().unwrap().clear();
     }
 }

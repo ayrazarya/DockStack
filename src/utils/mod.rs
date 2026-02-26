@@ -1,6 +1,4 @@
-use egui;
-use image;
-
+// utils/mod.rs
 #[allow(dead_code)]
 pub fn format_bytes(bytes: u64) -> String {
     const KB: u64 = 1024;

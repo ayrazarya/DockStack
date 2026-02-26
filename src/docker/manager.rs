@@ -5,6 +5,7 @@ use crossbeam_channel::{Receiver, Sender};
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::collections::VecDeque;
 use std::thread;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,9 +40,10 @@ pub struct DockerManager {
     pub event_tx: Sender<DockerEvent>,
     pub event_rx: Receiver<DockerEvent>,
     pub status: Arc<Mutex<ServiceStatus>>,
-    pub logs: Arc<Mutex<Vec<String>>>,
+    pub logs: Arc<Mutex<VecDeque<String>>>,
     pub containers: Arc<Mutex<Vec<ContainerInfo>>>,
     pub docker_available: Arc<Mutex<bool>>,
+    pub use_compose_plugin: Arc<Mutex<bool>>,
 }
 
 impl DockerManager {
@@ -51,19 +53,35 @@ impl DockerManager {
             event_tx,
             event_rx,
             status: Arc::new(Mutex::new(ServiceStatus::Stopped)),
-            logs: Arc::new(Mutex::new(Vec::new())),
+            logs: Arc::new(Mutex::new(VecDeque::new())),
             containers: Arc::new(Mutex::new(Vec::new())),
             docker_available: Arc::new(Mutex::new(false)),
+            use_compose_plugin: Arc::new(Mutex::new(false)),
         }
     }
 
     pub fn check_docker(&self) {
         let tx = self.event_tx.clone();
         let available = self.docker_available.clone();
+        let plugin = self.use_compose_plugin.clone();
+        
         thread::spawn(move || {
             let result = Command::new("docker").arg("info").output();
             let is_available = result.map(|o| o.status.success()).unwrap_or(false);
             *available.lock().unwrap() = is_available;
+            
+            let mut has_compose = false;
+            if let Ok(output) = std::process::Command::new("docker")
+                .arg("compose")
+                .arg("version")
+                .output()
+            {
+                if output.status.success() {
+                    has_compose = true;
+                }
+            }
+            *plugin.lock().unwrap() = has_compose;
+
             tx.send(DockerEvent::DockerAvailable(is_available)).ok();
         });
     }
@@ -90,12 +108,14 @@ impl DockerManager {
         ))
         .ok();
 
+        let use_compose_plugin = self.use_compose_plugin.clone();
+
         thread::spawn(move || {
             // Generate and write compose file
             match compose::write_compose_file(&project) {
                 Ok(compose_path) => {
                     let msg = format!("[DockStack] Compose file written: {}", compose_path);
-                    logs.lock().unwrap().push(msg.clone());
+                    logs.lock().unwrap().push_back(msg.clone());
                     tx.send(DockerEvent::Log(msg)).ok();
                 }
                 Err(e) => {
@@ -107,17 +127,12 @@ impl DockerManager {
             }
 
             let msg = "[DockStack] Starting services...".to_string();
-            logs.lock().unwrap().push(msg.clone());
+            logs.lock().unwrap().push_back(msg.clone());
             tx.send(DockerEvent::Log(msg)).ok();
 
             // Determine compose command
-            let (program, args) = if std::process::Command::new("docker")
-                .arg("compose")
-                .arg("version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-            {
+            let use_plugin = *use_compose_plugin.lock().unwrap();
+            let (program, args) = if use_plugin {
                 ("docker", vec!["compose", "up", "-d", "--remove-orphans"])
             } else {
                 ("docker-compose", vec!["up", "-d", "--remove-orphans"])
@@ -136,13 +151,11 @@ impl DockerManager {
                     // Read stderr
                     if let Some(stderr) = child.stderr.take() {
                         let reader = BufReader::new(stderr);
-                        for line in reader.lines() {
-                            if let Ok(line) = line {
-                                stderr_content.push_str(&line);
-                                stderr_content.push('\n');
-                                logs.lock().unwrap().push(line.clone());
-                                tx.send(DockerEvent::Log(line)).ok();
-                            }
+                        for line in reader.lines().map_while(Result::ok) {
+                            stderr_content.push_str(&line);
+                            stderr_content.push('\n');
+                            logs.lock().unwrap().push_back(line.clone());
+                            tx.send(DockerEvent::Log(line)).ok();
                         }
                     }
 
@@ -151,7 +164,7 @@ impl DockerManager {
                             if exit.success() {
                                 *status.lock().unwrap() = ServiceStatus::Running;
                                 let msg = "[DockStack] Services started successfully".to_string();
-                                logs.lock().unwrap().push(msg.clone());
+                                logs.lock().unwrap().push_back(msg.clone());
                                 tx.send(DockerEvent::Log(msg)).ok();
                                 tx.send(DockerEvent::StatusChange(
                                     "all".to_string(),
@@ -171,7 +184,7 @@ impl DockerManager {
                                 );
                                 
                                 log::error!("{}", combined_log);
-                                logs.lock().unwrap().push(combined_log.clone());
+                                logs.lock().unwrap().push_back(combined_log.clone());
                                 tx.send(DockerEvent::Log(combined_log)).ok(); // Send to logs tab
 
                                 let short_msg = "Failed to start. Check Logs tab.".to_string();
@@ -182,7 +195,7 @@ impl DockerManager {
                         Err(e) => {
                             let msg = format!("[DockStack] Failed to wait for docker process: {}", e);
                             log::error!("{}", msg);
-                             logs.lock().unwrap().push(msg.clone());
+                             logs.lock().unwrap().push_back(msg.clone());
                             *status.lock().unwrap() = ServiceStatus::Error("Process error. Check Logs.".to_string());
                              tx.send(DockerEvent::Error(msg)).ok();
                         }
@@ -194,7 +207,7 @@ impl DockerManager {
                         program, e
                     );
                     log::error!("{}", msg);
-                    logs.lock().unwrap().push(msg.clone());
+                    logs.lock().unwrap().push_back(msg.clone());
                     *status.lock().unwrap() = ServiceStatus::Error("Exec error. Check Logs.".to_string());
                     tx.send(DockerEvent::Error(msg)).ok();
                 }
@@ -215,19 +228,15 @@ impl DockerManager {
         ))
         .ok();
 
+        let use_compose_plugin = self.use_compose_plugin.clone();
+
         thread::spawn(move || {
             let msg = "[DockStack] Stopping services...".to_string();
-            logs.lock().unwrap().push(msg.clone());
+            logs.lock().unwrap().push_back(msg.clone());
             tx.send(DockerEvent::Log(msg)).ok();
 
             // Detect compose
-            let use_plugin = std::process::Command::new("docker")
-                .arg("compose")
-                .arg("version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
-
+            let use_plugin = *use_compose_plugin.lock().unwrap();
             let (prog, args) = if use_plugin {
                 ("docker", vec!["compose", "down"])
             } else {
@@ -244,11 +253,9 @@ impl DockerManager {
                 Ok(mut child) => {
                     if let Some(stderr) = child.stderr.take() {
                         let reader = BufReader::new(stderr);
-                        for line in reader.lines() {
-                            if let Ok(line) = line {
-                                logs.lock().unwrap().push(line.clone());
-                                tx.send(DockerEvent::Log(line)).ok();
-                            }
+                        for line in reader.lines().map_while(Result::ok) {
+                            logs.lock().unwrap().push_back(line.clone());
+                            tx.send(DockerEvent::Log(line)).ok();
                         }
                     }
 
@@ -257,7 +264,7 @@ impl DockerManager {
                             if exit.success() {
                                 *status.lock().unwrap() = ServiceStatus::Stopped;
                                 let msg = "[DockStack] Services stopped".to_string();
-                                logs.lock().unwrap().push(msg.clone());
+                                logs.lock().unwrap().push_back(msg.clone());
                                 tx.send(DockerEvent::Log(msg)).ok();
                                 tx.send(DockerEvent::StatusChange(
                                     "all".to_string(),
@@ -286,6 +293,27 @@ impl DockerManager {
         });
     }
 
+    pub fn stop_services_sync(&self, project: &ProjectConfig) {
+        let msg = "[DockStack] Stopping services before exit...".to_string();
+        self.logs.lock().unwrap().push_back(msg.clone());
+        self.event_tx.send(DockerEvent::Log(msg)).ok();
+        
+        let use_plugin = *self.use_compose_plugin.lock().unwrap();
+        let (prog, args) = if use_plugin {
+            ("docker", vec!["compose", "down"])
+        } else {
+            ("docker-compose", vec!["down"])
+        };
+
+        let mut cmd = Command::new(prog);
+        cmd.args(&args)
+            .current_dir(&project.directory)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+            
+        let _ = cmd.status();
+    }
+
     pub fn restart_services(&self, project: &ProjectConfig) {
         let project = project.clone();
         let tx = self.event_tx.clone();
@@ -294,19 +322,15 @@ impl DockerManager {
 
         *status.lock().unwrap() = ServiceStatus::Stopping;
 
+        let use_compose_plugin = self.use_compose_plugin.clone();
+
         thread::spawn(move || {
             let msg = "[DockStack] Restarting services...".to_string();
-            logs.lock().unwrap().push(msg.clone());
+            logs.lock().unwrap().push_back(msg.clone());
             tx.send(DockerEvent::Log(msg)).ok();
 
             // Detect compose
-            let use_plugin = std::process::Command::new("docker")
-                .arg("compose")
-                .arg("version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
-
+            let use_plugin = *use_compose_plugin.lock().unwrap();
             // Stop
             let (prog_down, args_down) = if use_plugin {
                  ("docker", vec!["compose", "down"])
@@ -351,7 +375,7 @@ impl DockerManager {
                     if output.status.success() {
                         *status.lock().unwrap() = ServiceStatus::Running;
                         let msg = "[DockStack] Services restarted successfully".to_string();
-                        logs.lock().unwrap().push(msg.clone());
+                        logs.lock().unwrap().push_back(msg.clone());
                         tx.send(DockerEvent::Log(msg)).ok();
                         tx.send(DockerEvent::StatusChange(
                             "all".to_string(),
@@ -426,15 +450,11 @@ impl DockerManager {
         let tx = self.event_tx.clone();
         let logs = self.logs.clone();
 
+        let use_compose_plugin = self.use_compose_plugin.clone();
+
         thread::spawn(move || {
             // Detect compose
-            let use_plugin = std::process::Command::new("docker")
-                .arg("compose")
-                .arg("version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
-
+            let use_plugin = *use_compose_plugin.lock().unwrap();
             let (prog, args) = if use_plugin {
                 ("docker", vec!["compose", "logs", "-f", "--tail", "100"])
             } else {
@@ -451,21 +471,20 @@ impl DockerManager {
                 Ok(mut child) => {
                     if let Some(stdout) = child.stdout.take() {
                         let reader = BufReader::new(stdout);
-                        for line in reader.lines() {
-                            if let Ok(line) = line {
-                                logs.lock().unwrap().push(line.clone());
-                                // Keep log buffer limited
-                                {
-                                    let mut l = logs.lock().unwrap();
-                                    if l.len() > 5000 {
-                                        let drain_count = l.len() - 3000;
-                                        l.drain(0..drain_count);
-                                    }
+                        for line in reader.lines().map_while(Result::ok) {
+                            logs.lock().unwrap().push_back(line.clone());
+                            // Keep log buffer limited
+                            {
+                                let mut l = logs.lock().unwrap();
+                                if l.len() > 5000 {
+                                    let drain_count = l.len() - 3000;
+                                    l.drain(0..drain_count);
                                 }
-                                tx.send(DockerEvent::Log(line)).ok();
                             }
+                            tx.send(DockerEvent::Log(line)).ok();
                         }
                     }
+                    child.wait().ok(); // Avoid zombie process
                 }
                 Err(e) => {
                     tx.send(DockerEvent::Error(format!("Failed to stream logs: {}", e)))

@@ -338,10 +338,12 @@ impl AppConfig {
             .join("dockstack-projects")
             .join(&id);
         fs::create_dir_all(&dir).ok();
-        let mut project = ProjectConfig::default();
-        project.id = id.clone();
-        project.name = name;
-        project.directory = dir.to_string_lossy().to_string();
+        let project = ProjectConfig {
+            id: id.clone(),
+            name,
+            directory: dir.to_string_lossy().to_string(),
+            ..ProjectConfig::default()
+        };
         self.projects.push(project);
         self.active_project_id = Some(id.clone());
         self.save();

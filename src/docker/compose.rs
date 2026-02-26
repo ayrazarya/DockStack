@@ -24,7 +24,7 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
             "postgresql" => {
                 let mut s = YamlMap::new();
                 s.insert(y_str("image"), y_str(&format!("postgres:{}", svc.version)));
-                s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_postgres", project.id)));
+                s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_postgresql", project.id)));
                 s.insert(y_str("restart"), y_str("unless-stopped"));
 
                 let mut env = YamlMap::new();
@@ -159,7 +159,7 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
                 s.insert(y_str("networks"), YamlVal::Sequence(nets));
 
                 let deps = vec![YamlVal::String("mysql".to_string())];
-                if project.services.get("mysql").map_or(false, |s| s.enabled) {
+                if project.services.get("mysql").is_some_and(|s| s.enabled) {
                     s.insert(y_str("depends_on"), YamlVal::Sequence(deps));
                 }
 
@@ -186,7 +186,7 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
                 let nets = vec![YamlVal::String(network_name.clone())];
                 s.insert(y_str("networks"), YamlVal::Sequence(nets));
 
-                if project.services.get("postgresql").map_or(false, |s| s.enabled) {
+                if project.services.get("postgresql").is_some_and(|s| s.enabled) {
                     let deps = vec![YamlVal::String("postgresql".to_string())];
                     s.insert(y_str("depends_on"), YamlVal::Sequence(deps));
                 }
@@ -282,12 +282,12 @@ pub fn write_compose_file(project: &ProjectConfig) -> std::io::Result<String> {
     fs::write(&path, &compose)?;
 
     // Write nginx config if nginx is enabled
-    if project.services.get("nginx").map_or(false, |s| s.enabled) {
+    if project.services.get("nginx").is_some_and(|s| s.enabled) {
         write_nginx_config(project)?;
     }
 
     // Write apache config if apache is enabled
-    if project.services.get("apache").map_or(false, |s| s.enabled) {
+    if project.services.get("apache").is_some_and(|s| s.enabled) {
         write_apache_config(project)?;
     }
 
@@ -295,7 +295,7 @@ pub fn write_compose_file(project: &ProjectConfig) -> std::io::Result<String> {
     write_default_index(project)?;
 
     // Write php config if php is enabled
-    if project.services.get("php").map_or(false, |s| s.enabled) {
+    if project.services.get("php").is_some_and(|s| s.enabled) {
         write_php_config(project)?;
     }
 

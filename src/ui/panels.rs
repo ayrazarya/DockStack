@@ -308,7 +308,7 @@ pub fn render_dashboard(
                         let icon = info.as_ref().map(|i| i.icon).unwrap_or("❓");
                         let is_running = containers.iter().any(|c| c.name.contains(name.as_str()) && c.state.contains("running"));
                         
-                        service_card_compact(ui, &display_name, &icon, &svc.version, svc.port, is_running);
+                        service_card_compact(ui, &display_name, icon, &svc.version, svc.port, is_running);
                         
                         if (i + 1) % 2 == 0 {
                             ui.end_row();
@@ -872,9 +872,7 @@ pub fn render_terminal(
          ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
               if !terminal_running {
                   if ui.button(RichText::new("▶ Start Shell").color(COLOR_SUCCESS)).clicked() { *start_terminal = true; }
-              } else {
-                  if ui.button(RichText::new("⏹ Reset").color(COLOR_ERROR)).clicked() { /* logic to kill */ }
-              }
+              } else if ui.button(RichText::new("⏹ Reset").color(COLOR_ERROR)).clicked() { /* logic to kill */ }
               if ui.button("Clear").clicked() { *clear_terminal = true; }
          });
     });
@@ -1018,10 +1016,8 @@ pub fn render_settings(
              ui.horizontal(|ui| {
                  ui.label("New Project Name:");
                  ui.text_edit_singleline(new_project_name);
-                 if ui.button("Create").clicked() {
-                     if !new_project_name.is_empty() {
-                         // Logic handled in parent or here
-                     }
+                 if ui.button("Create").clicked() && !new_project_name.is_empty() {
+                     // Logic handled in parent or here
                  }
              });
          });

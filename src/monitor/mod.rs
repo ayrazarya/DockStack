@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use crossbeam_channel::{Sender, Receiver};
+use std::collections::VecDeque;
 
 #[derive(Debug, Clone, Default)]
 pub struct SystemStats {
@@ -33,8 +34,8 @@ pub enum MonitorEvent {
 pub struct ResourceMonitor {
     pub system_stats: Arc<Mutex<SystemStats>>,
     pub container_stats: Arc<Mutex<Vec<ContainerStats>>>,
-    pub cpu_history: Arc<Mutex<Vec<f32>>>,
-    pub mem_history: Arc<Mutex<Vec<f32>>>,
+    pub cpu_history: Arc<Mutex<VecDeque<f32>>>,
+    pub mem_history: Arc<Mutex<VecDeque<f32>>>,
     pub event_tx: Sender<MonitorEvent>,
     pub event_rx: Receiver<MonitorEvent>,
     running: Arc<Mutex<bool>>,
@@ -46,8 +47,8 @@ impl ResourceMonitor {
         Self {
             system_stats: Arc::new(Mutex::new(SystemStats::default())),
             container_stats: Arc::new(Mutex::new(Vec::new())),
-            cpu_history: Arc::new(Mutex::new(vec![0.0; 60])),
-            mem_history: Arc::new(Mutex::new(vec![0.0; 60])),
+            cpu_history: Arc::new(Mutex::new(VecDeque::from(vec![0.0; 60]))),
+            mem_history: Arc::new(Mutex::new(VecDeque::from(vec![0.0; 60]))),
             event_tx,
             event_rx,
             running: Arc::new(Mutex::new(false)),
@@ -97,16 +98,16 @@ impl ResourceMonitor {
 
                 {
                     let mut hist = cpu_history.lock().unwrap();
-                    hist.push(cpu);
+                    hist.push_back(cpu);
                     if hist.len() > 60 {
-                        hist.remove(0);
+                        hist.pop_front();
                     }
                 }
                 {
                     let mut hist = mem_history.lock().unwrap();
-                    hist.push(mem_pct);
+                    hist.push_back(mem_pct);
                     if hist.len() > 60 {
-                        hist.remove(0);
+                        hist.pop_front();
                     }
                 }
 

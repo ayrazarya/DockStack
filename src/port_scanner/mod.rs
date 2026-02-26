@@ -22,14 +22,17 @@ impl PortScanner {
     pub fn scan_ports(ports: &[u16]) -> Vec<PortInfo> {
         ports
             .iter()
-            .map(|&port| PortInfo {
-                port,
-                in_use: !Self::is_port_available(port),
-                process: if !Self::is_port_available(port) {
-                    Self::get_process_on_port(port)
-                } else {
-                    String::new()
-                },
+            .map(|&port| {
+                let is_available = Self::is_port_available(port);
+                PortInfo {
+                    port,
+                    in_use: !is_available,
+                    process: if !is_available {
+                        Self::get_process_on_port(port)
+                    } else {
+                        String::new()
+                    },
+                }
             })
             .collect()
     }
