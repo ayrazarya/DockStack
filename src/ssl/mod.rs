@@ -30,8 +30,9 @@ impl SslManager {
     fn generate_with_rcgen(cert_path: &Path, key_path: &Path) -> Result<(), String> {
         use rcgen::{CertificateParams, KeyPair};
 
-        let mut params = CertificateParams::new(vec!["localhost".to_string(), "127.0.0.1".to_string()])
-            .map_err(|e| format!("Failed to create cert params: {}", e))?;
+        let mut params =
+            CertificateParams::new(vec!["localhost".to_string(), "127.0.0.1".to_string()])
+                .map_err(|e| format!("Failed to create cert params: {}", e))?;
         params.distinguished_name.push(
             rcgen::DnType::CommonName,
             rcgen::DnValue::Utf8String("DockStack Dev Certificate".to_string()),
@@ -41,21 +42,23 @@ impl SslManager {
             rcgen::DnValue::Utf8String("DockStack".to_string()),
         );
 
-        let key_pair = KeyPair::generate()
-            .map_err(|e| format!("Failed to generate key pair: {}", e))?;
+        let key_pair =
+            KeyPair::generate().map_err(|e| format!("Failed to generate key pair: {}", e))?;
         let cert = params
             .self_signed(&key_pair)
             .map_err(|e| format!("Failed to self-sign: {}", e))?;
 
-        fs::write(cert_path, cert.pem())
-            .map_err(|e| format!("Failed to write cert: {}", e))?;
+        fs::write(cert_path, cert.pem()).map_err(|e| format!("Failed to write cert: {}", e))?;
         fs::write(key_path, key_pair.serialize_pem())
             .map_err(|e| format!("Failed to write key: {}", e))?;
 
         Ok(())
     }
 
-    fn generate_with_openssl(cert_path: &Path, key_path: &Path) -> Result<(String, String), String> {
+    fn generate_with_openssl(
+        cert_path: &Path,
+        key_path: &Path,
+    ) -> Result<(String, String), String> {
         let output = Command::new("openssl")
             .args([
                 "req",
@@ -96,8 +99,7 @@ impl SslManager {
     pub fn remove_certs(project_dir: &str) -> Result<(), String> {
         let certs_dir = Path::new(project_dir).join("certs");
         if certs_dir.exists() {
-            fs::remove_dir_all(&certs_dir)
-                .map_err(|e| format!("Failed to remove certs: {}", e))?;
+            fs::remove_dir_all(&certs_dir).map_err(|e| format!("Failed to remove certs: {}", e))?;
         }
         Ok(())
     }

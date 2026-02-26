@@ -1,6 +1,6 @@
 #![allow(dead_code)]
-use std::net::TcpListener;
 use std::collections::HashMap;
+use std::net::TcpListener;
 use std::process::Command;
 
 #[derive(Debug, Clone)]
@@ -59,7 +59,9 @@ impl PortScanner {
     }
 
     /// Scan all service ports for a project
-    pub fn scan_project_ports(services: &HashMap<String, crate::config::ServiceConfig>) -> Vec<PortInfo> {
+    pub fn scan_project_ports(
+        services: &HashMap<String, crate::config::ServiceConfig>,
+    ) -> Vec<PortInfo> {
         let ports: Vec<u16> = services
             .iter()
             .filter(|(_, v)| v.enabled)
@@ -99,9 +101,7 @@ impl PortScanner {
 
         #[cfg(target_os = "windows")]
         {
-            let output = Command::new("netstat")
-                .args(["-ano", "-p", "TCP"])
-                .output();
+            let output = Command::new("netstat").args(["-ano", "-p", "TCP"]).output();
             if let Ok(out) = output {
                 let s = String::from_utf8_lossy(&out.stdout);
                 for line in s.lines() {

@@ -47,9 +47,9 @@ pub struct ServiceConfig {
     #[serde(default)]
     pub image: Option<String>, // For custom services
     #[serde(default)]
-    pub is_custom: bool,       // Flag for user-added services
+    pub is_custom: bool, // Flag for user-added services
     #[serde(default)]
-    pub is_locked: bool,       // If true, DockStack won't regenerate its config files
+    pub is_locked: bool, // If true, DockStack won't regenerate its config files
     pub env_vars: HashMap<String, String>,
     pub settings: HashMap<String, String>,
 }
@@ -129,7 +129,10 @@ impl Default for ProjectConfig {
                 env_vars: HashMap::new(),
                 settings: {
                     let mut m = HashMap::new();
-                    m.insert("extensions".to_string(), "pdo_mysql,gd,zip,intl".to_string());
+                    m.insert(
+                        "extensions".to_string(),
+                        "pdo_mysql,gd,zip,intl".to_string(),
+                    );
                     m.insert("memory_limit".to_string(), "256M".to_string());
                     m
                 },
@@ -202,10 +205,7 @@ impl Default for ProjectConfig {
                         "PGADMIN_DEFAULT_EMAIL".to_string(),
                         "admin@admin.com".to_string(),
                     );
-                    m.insert(
-                        "PGADMIN_DEFAULT_PASSWORD".to_string(),
-                        "admin".to_string(),
-                    );
+                    m.insert("PGADMIN_DEFAULT_PASSWORD".to_string(), "admin".to_string());
                     m
                 },
                 settings: HashMap::new(),
@@ -358,15 +358,22 @@ impl AppConfig {
         self.save();
     }
 
-    pub fn import_from_compose(&mut self, yaml_path: &std::path::Path) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn import_from_compose(
+        &mut self,
+        yaml_path: &std::path::Path,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         let content = fs::read_to_string(yaml_path)?;
         let yaml: serde_yaml::Value = serde_yaml::from_str(&content)?;
-        
+
         let project_dir = yaml_path.parent().unwrap_or(std::path::Path::new("."));
-        let project_name = project_dir.file_name().unwrap_or_default().to_string_lossy().to_string();
-        
+        let project_name = project_dir
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
         let mut services = HashMap::new();
-        
+
         if let Some(yaml_services) = yaml.get("services").and_then(|v| v.as_mapping()) {
             for (name_val, svc_val) in yaml_services {
                 let name = name_val.as_str().unwrap_or("unknown").to_string();
@@ -381,7 +388,7 @@ impl AppConfig {
                     env_vars: HashMap::new(),
                     settings: HashMap::new(),
                 };
-                
+
                 if let Some(img) = svc_val.get("image").and_then(|v| v.as_str()) {
                     if img.contains(':') {
                         let parts: Vec<&str> = img.split(':').collect();
@@ -391,19 +398,21 @@ impl AppConfig {
                         svc.image = Some(img.to_string());
                     }
                 }
-                
+
                 if let Some(ports) = svc_val.get("ports").and_then(|v| v.as_sequence()) {
                     if let Some(p_str) = ports[0].as_str() {
-                        if let Some(host_port) = p_str.split(':').next().and_then(|p| p.parse::<u16>().ok()) {
+                        if let Some(host_port) =
+                            p_str.split(':').next().and_then(|p| p.parse::<u16>().ok())
+                        {
                             svc.port = host_port;
                         }
                     }
                 }
-                
+
                 services.insert(name, svc);
             }
         }
-        
+
         let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
         let project = ProjectConfig {
             id: id.clone(),
@@ -414,7 +423,7 @@ impl AppConfig {
             custom_ports: HashMap::new(),
             domain: format!("{}.test", project_name.to_lowercase().replace(' ', "-")),
         };
-        
+
         self.projects.push(project);
         self.active_project_id = Some(id.clone());
         self.save();

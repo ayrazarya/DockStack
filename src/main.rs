@@ -19,14 +19,16 @@ fn main() -> eframe::Result<()> {
         }
     }
 
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,dockstack=info"))
-        .format_timestamp_secs()
-        .init();
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("warn,dockstack=info"),
+    )
+    .format_timestamp_secs()
+    .init();
 
     log::info!("Starting DockStack v0.1.0");
 
     let icon = utils::load_icon();
-    
+
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([1280.0, 800.0])
         .with_min_inner_size([900.0, 600.0])

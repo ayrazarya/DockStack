@@ -3,11 +3,11 @@
 // Note: tray-icon requires the event loop to run on the main thread.
 // We provide the setup functions and menu builders here.
 
+use crossbeam_channel::{Receiver, Sender};
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
     TrayIcon, TrayIconBuilder,
 };
-use crossbeam_channel::{Sender, Receiver};
 
 #[derive(Debug, Clone)]
 pub enum TrayCommand {
@@ -80,20 +80,18 @@ impl SystemTray {
 
         // Spawn menu event handler
         let tx = self.command_tx.clone();
-        std::thread::spawn(move || {
-            loop {
-                if let Ok(event) = MenuEvent::receiver().recv() {
-                    if event.id() == &start_id {
-                        tx.send(TrayCommand::Start).ok();
-                    } else if event.id() == &stop_id {
-                        tx.send(TrayCommand::Stop).ok();
-                    } else if event.id() == &restart_id {
-                        tx.send(TrayCommand::Restart).ok();
-                    } else if event.id() == &open_id {
-                        tx.send(TrayCommand::OpenUI).ok();
-                    } else if event.id() == &quit_id {
-                        tx.send(TrayCommand::Quit).ok();
-                    }
+        std::thread::spawn(move || loop {
+            if let Ok(event) = MenuEvent::receiver().recv() {
+                if event.id() == &start_id {
+                    tx.send(TrayCommand::Start).ok();
+                } else if event.id() == &stop_id {
+                    tx.send(TrayCommand::Stop).ok();
+                } else if event.id() == &restart_id {
+                    tx.send(TrayCommand::Restart).ok();
+                } else if event.id() == &open_id {
+                    tx.send(TrayCommand::OpenUI).ok();
+                } else if event.id() == &quit_id {
+                    tx.send(TrayCommand::Quit).ok();
                 }
             }
         });

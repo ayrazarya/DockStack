@@ -1,9 +1,9 @@
-use eframe::egui::{self, RichText, Vec2, ScrollArea};
+use eframe::egui::{self, RichText, ScrollArea, Vec2};
 use std::time::Instant;
 
 use crate::config::AppConfig;
 use crate::docker::manager::{DockerEvent, DockerManager, ServiceStatus};
-use crate::monitor::{MonitorEvent, ResourceMonitor, SystemStats, ContainerStats};
+use crate::monitor::{ContainerStats, MonitorEvent, ResourceMonitor, SystemStats};
 use crate::port_scanner::{PortInfo, PortScanner};
 use crate::ssl::SslManager;
 use crate::terminal::EmbeddedTerminal;
@@ -165,24 +165,30 @@ impl DockStackApp {
                 Tab::Monitor => ("📊", "Live Analytics"),
                 Tab::Settings => ("⚙️", "Settings"),
             };
-                        ui.horizontal(|ui| {
-                ui.add(egui::Image::new(egui::include_image!("../../assets/images/icon.png"))
-                    .max_size(Vec2::new(32.0, 32.0))
-                    .corner_radius(8.0));
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::Image::new(egui::include_image!("../../assets/images/icon.png"))
+                        .max_size(Vec2::new(32.0, 32.0))
+                        .corner_radius(8.0),
+                );
                 ui.add_space(12.0);
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                         ui.label(RichText::new(icon).size(20.0));
-                         ui.label(
+                        ui.label(RichText::new(icon).size(20.0));
+                        ui.label(
                             egui::RichText::new(title)
                                 .size(24.0)
                                 .strong()
-                                .color(theme::COLOR_TEXT)
+                                .color(theme::COLOR_TEXT),
                         );
                     });
-                    ui.label(RichText::new("Manage your containerized dev environment with ease").size(12.0).color(theme::COLOR_TEXT_DIM));
+                    ui.label(
+                        RichText::new("Manage your containerized dev environment with ease")
+                            .size(12.0)
+                            .color(theme::COLOR_TEXT_DIM),
+                    );
                 });
-             });
+            });
 
             // Global Actions (Right aligned)
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -195,12 +201,12 @@ impl DockStackApp {
                     let btn = egui::Button::new(
                         egui::RichText::new("▶  Power Up Stack")
                             .color(theme::COLOR_BG_APP)
-                            .strong()
+                            .strong(),
                     )
                     .fill(theme::COLOR_SUCCESS)
                     .corner_radius(egui::CornerRadius::same(10))
                     .min_size(Vec2::new(140.0, 42.0));
-                    
+
                     if ui.add(btn).clicked() {
                         if let Some(project) = self.config.active_project() {
                             self.docker.start_services(project);
@@ -212,7 +218,17 @@ impl DockStackApp {
 
                 // Restart/Stop Buttons - Ghost style
                 ui.add_enabled_ui(can_stop, |ui| {
-                    if ui.add(egui::Button::new(RichText::new("🔄 Restart").color(theme::COLOR_WARNING)).frame(true).stroke(egui::Stroke::new(1.0, theme::COLOR_BORDER)).min_size(Vec2::new(100.0, 42.0))).clicked() {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                RichText::new("🔄 Restart").color(theme::COLOR_WARNING),
+                            )
+                            .frame(true)
+                            .stroke(egui::Stroke::new(1.0, theme::COLOR_BORDER))
+                            .min_size(Vec2::new(100.0, 42.0)),
+                        )
+                        .clicked()
+                    {
                         if let Some(project) = self.config.active_project() {
                             self.docker.restart_services(project);
                         }
@@ -222,7 +238,15 @@ impl DockStackApp {
                 ui.add_space(8.0);
 
                 ui.add_enabled_ui(can_stop, |ui| {
-                    if ui.add(egui::Button::new(RichText::new("⏹ Stop").color(theme::COLOR_ERROR)).frame(true).stroke(egui::Stroke::new(1.0, theme::COLOR_BORDER)).min_size(Vec2::new(80.0, 42.0))).clicked() {
+                    if ui
+                        .add(
+                            egui::Button::new(RichText::new("⏹ Stop").color(theme::COLOR_ERROR))
+                                .frame(true)
+                                .stroke(egui::Stroke::new(1.0, theme::COLOR_BORDER))
+                                .min_size(Vec2::new(80.0, 42.0)),
+                        )
+                        .clicked()
+                    {
                         if let Some(project) = self.config.active_project() {
                             self.docker.stop_services(project);
                         }
@@ -257,7 +281,7 @@ impl eframe::App for DockStackApp {
 
         // Periodic container refresh
         if self.last_container_refresh.elapsed().as_secs() >= 3 {
-             if let Some(project) = self.config.active_project() {
+            if let Some(project) = self.config.active_project() {
                 self.docker.refresh_containers(project);
             }
             self.last_container_refresh = Instant::now();
@@ -266,165 +290,210 @@ impl eframe::App for DockStackApp {
         // Bottom status bar (integrated with background)
         egui::TopBottomPanel::bottom("status_bar")
             .max_height(32.0)
-            .frame(egui::Frame::new().fill(theme::COLOR_BG_APP).inner_margin(egui::Margin::symmetric(16, 4)))
+            .frame(
+                egui::Frame::new()
+                    .fill(theme::COLOR_BG_APP)
+                    .inner_margin(egui::Margin::symmetric(16, 4)),
+            )
             .show(ctx, |ui| {
-                 ui.horizontal(|ui| {
-                     ui.label(egui::RichText::new("DockStack Native").size(11.0).color(theme::COLOR_TEXT_MUTED));
-                     ui.add_space(12.0);
-                     ui.separator();
-                     ui.add_space(12.0);
-                     ui.label(egui::RichText::new("Docker Engine: Online").size(11.0).color(theme::COLOR_SUCCESS));
-                     
-                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                         ui.label(egui::RichText::new(format!("MEM: {:.1} GB", self.sys_stats.memory_used as f32 / 1024.0 / 1024.0 / 1024.0)).size(11.0).color(theme::COLOR_TEXT_DIM));
-                         ui.add_space(16.0);
-                         ui.label(egui::RichText::new(format!("CPU: {:.1}%", self.sys_stats.cpu_usage)).size(11.0).color(theme::COLOR_TEXT_DIM));
-                     });
-                 });
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("DockStack Native")
+                            .size(11.0)
+                            .color(theme::COLOR_TEXT_MUTED),
+                    );
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.add_space(12.0);
+                    ui.label(
+                        egui::RichText::new("Docker Engine: Online")
+                            .size(11.0)
+                            .color(theme::COLOR_SUCCESS),
+                    );
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "MEM: {:.1} GB",
+                                self.sys_stats.memory_used as f32 / 1024.0 / 1024.0 / 1024.0
+                            ))
+                            .size(11.0)
+                            .color(theme::COLOR_TEXT_DIM),
+                        );
+                        ui.add_space(16.0);
+                        ui.label(
+                            egui::RichText::new(format!("CPU: {:.1}%", self.sys_stats.cpu_usage))
+                                .size(11.0)
+                                .color(theme::COLOR_TEXT_DIM),
+                        );
+                    });
+                });
             });
 
         // Permanent Slim Sidebar
         egui::SidePanel::left("sidebar")
-            .exact_width(220.0) 
+            .exact_width(220.0)
             .resizable(false)
             .show_separator_line(false)
-            .frame(egui::Frame::new()
-                .fill(theme::COLOR_BG_PANEL)
-                .stroke(egui::Stroke::NONE) // Remove stroke
-                .inner_margin(egui::Margin::symmetric(12, 0)))
+            .frame(
+                egui::Frame::new()
+                    .fill(theme::COLOR_BG_PANEL)
+                    .stroke(egui::Stroke::NONE) // Remove stroke
+                    .inner_margin(egui::Margin::symmetric(12, 0)),
+            )
             .show(ctx, |ui| {
                 let status = self.docker.status.lock().unwrap().clone();
                 panels::render_sidebar(ui, &mut self.active_tab, &mut self.config, &status);
             });
 
-
         // Modern Central Panel
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::COLOR_BG_APP))
             .show(ctx, |ui| {
-            ScrollArea::vertical()
-                .auto_shrink([false; 2])
-                .show(ui, |ui| {
-                    egui::Frame::new()
-                        .inner_margin(egui::Margin::symmetric(32, 24)) // Keep inner margin for content
-                        .stroke(egui::Stroke::NONE) // Remove stroke from this frame
-                        .show(ui, |ui| {
-                    // Integrated Header
-                    self.render_header(ui);
-                    
-                    match self.active_tab {
-                        Tab::Dashboard => {
-                            let status = self.docker.status.lock().unwrap().clone();
-                            panels::render_dashboard(
-                                ui,
-                                &mut self.config,
-                                &status,
-                                &self.sys_stats,
-                                &self.docker.containers.lock().unwrap(),
-                                self.docker_available,
-                            );
-                        }
+                ScrollArea::vertical()
+                    .auto_shrink([false; 2])
+                    .show(ui, |ui| {
+                        egui::Frame::new()
+                            .inner_margin(egui::Margin::symmetric(32, 24)) // Keep inner margin for content
+                            .stroke(egui::Stroke::NONE) // Remove stroke from this frame
+                            .show(ui, |ui| {
+                                // Integrated Header
+                                self.render_header(ui);
 
-                        Tab::Services => {
-                            panels::render_services(ui, &mut self.config, &self.docker.containers.lock().unwrap());
-                        }
-                        Tab::Containers => {
-                            panels::render_containers(ui, &self.docker.containers.lock().unwrap());
-                        }
-                        Tab::Logs => {
-                            let mut clear = false;
-                            let mut logs_guard = self.docker.logs.lock().unwrap();
-                            panels::render_logs(ui, logs_guard.make_contiguous(), &mut clear);
-                            if clear {
-                                logs_guard.clear();
-                            }
-                        }
-                        Tab::Terminal => {
-                            let mut term_lines_guard = self.terminal.output_lines.lock().unwrap();
-                            let term_lines = term_lines_guard.make_contiguous();
-                            let mut send = false;
-                            let mut clear = false;
-                            let mut start = false;
-                            let term_running = self.terminal.is_running();
+                                match self.active_tab {
+                                    Tab::Dashboard => {
+                                        let status = self.docker.status.lock().unwrap().clone();
+                                        panels::render_dashboard(
+                                            ui,
+                                            &mut self.config,
+                                            &status,
+                                            &self.sys_stats,
+                                            &self.docker.containers.lock().unwrap(),
+                                            self.docker_available,
+                                        );
+                                    }
 
-                            panels::render_terminal(
-                                ui,
-                                term_lines,
-                                &mut self.terminal_input,
-                                &mut send,
-                                &mut clear,
-                                &mut start,
-                                term_running,
-                            );
-
-                            if start && !term_running {
-                                self.terminal.start();
-                            }
-                            if send && !self.terminal_input.is_empty() {
-                                let input = self.terminal_input.clone();
-                                self.terminal.send_input(&input);
-                                self.terminal_input.clear();
-                            }
-                            if clear {
-                                term_lines_guard.clear();
-                            }
-                        }
-                        Tab::Ports => {
-                            let mut scan = false;
-                            panels::render_ports(ui, &self.port_infos, &mut scan);
-                            if scan {
-                                if let Some(project) = self.config.active_project() {
-                                    self.port_infos =
-                                        PortScanner::scan_project_ports(&project.services);
-                                } else {
-                                    self.port_infos = PortScanner::get_common_ports();
-                                }
-                            }
-                        }
-                        Tab::Monitor => {
-                            panels::render_monitor(
-                                ui,
-                                &self.sys_stats,
-                                &self.container_stats,
-                                self.cpu_history.make_contiguous(),
-                                self.mem_history.make_contiguous(),
-                            );
-                        }
-                        Tab::Settings => {
-                            let mut gen_ssl = false;
-                            let mut rem_ssl = false;
-                            panels::render_settings(
-                                ui,
-                                &mut self.config,
-                                &mut self.new_project_name,
-                                &mut gen_ssl,
-                                &mut rem_ssl,
-                            );
-
-                            if gen_ssl {
-                                if let Some(project) = self.config.active_project() {
-                                    match SslManager::generate_self_signed(&project.directory) {
-                                        Ok((cert, key)) => {
-                                            log::info!("SSL cert generated: {}, {}", cert, key);
+                                    Tab::Services => {
+                                        panels::render_services(
+                                            ui,
+                                            &mut self.config,
+                                            &self.docker.containers.lock().unwrap(),
+                                        );
+                                    }
+                                    Tab::Containers => {
+                                        panels::render_containers(
+                                            ui,
+                                            &self.docker.containers.lock().unwrap(),
+                                        );
+                                    }
+                                    Tab::Logs => {
+                                        let mut clear = false;
+                                        let mut logs_guard = self.docker.logs.lock().unwrap();
+                                        panels::render_logs(
+                                            ui,
+                                            logs_guard.make_contiguous(),
+                                            &mut clear,
+                                        );
+                                        if clear {
+                                            logs_guard.clear();
                                         }
-                                        Err(e) => {
-                                            log::error!("SSL generation failed: {}", e);
+                                    }
+                                    Tab::Terminal => {
+                                        let mut term_lines_guard =
+                                            self.terminal.output_lines.lock().unwrap();
+                                        let term_lines = term_lines_guard.make_contiguous();
+                                        let mut send = false;
+                                        let mut clear = false;
+                                        let mut start = false;
+                                        let term_running = self.terminal.is_running();
+
+                                        panels::render_terminal(
+                                            ui,
+                                            term_lines,
+                                            &mut self.terminal_input,
+                                            &mut send,
+                                            &mut clear,
+                                            &mut start,
+                                            term_running,
+                                        );
+
+                                        if start && !term_running {
+                                            self.terminal.start();
+                                        }
+                                        if send && !self.terminal_input.is_empty() {
+                                            let input = self.terminal_input.clone();
+                                            self.terminal.send_input(&input);
+                                            self.terminal_input.clear();
+                                        }
+                                        if clear {
+                                            term_lines_guard.clear();
+                                        }
+                                    }
+                                    Tab::Ports => {
+                                        let mut scan = false;
+                                        panels::render_ports(ui, &self.port_infos, &mut scan);
+                                        if scan {
+                                            if let Some(project) = self.config.active_project() {
+                                                self.port_infos = PortScanner::scan_project_ports(
+                                                    &project.services,
+                                                );
+                                            } else {
+                                                self.port_infos = PortScanner::get_common_ports();
+                                            }
+                                        }
+                                    }
+                                    Tab::Monitor => {
+                                        panels::render_monitor(
+                                            ui,
+                                            &self.sys_stats,
+                                            &self.container_stats,
+                                            self.cpu_history.make_contiguous(),
+                                            self.mem_history.make_contiguous(),
+                                        );
+                                    }
+                                    Tab::Settings => {
+                                        let mut gen_ssl = false;
+                                        let mut rem_ssl = false;
+                                        panels::render_settings(
+                                            ui,
+                                            &mut self.config,
+                                            &mut self.new_project_name,
+                                            &mut gen_ssl,
+                                            &mut rem_ssl,
+                                        );
+
+                                        if gen_ssl {
+                                            if let Some(project) = self.config.active_project() {
+                                                match SslManager::generate_self_signed(
+                                                    &project.directory,
+                                                ) {
+                                                    Ok((cert, key)) => {
+                                                        log::info!(
+                                                            "SSL cert generated: {}, {}",
+                                                            cert,
+                                                            key
+                                                        );
+                                                    }
+                                                    Err(e) => {
+                                                        log::error!("SSL generation failed: {}", e);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if rem_ssl {
+                                            if let Some(project) = self.config.active_project() {
+                                                if let Err(e) =
+                                                    SslManager::remove_certs(&project.directory)
+                                                {
+                                                    log::error!("SSL removal failed: {}", e);
+                                                }
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            if rem_ssl {
-                                if let Some(project) = self.config.active_project() {
-                                    if let Err(e) = SslManager::remove_certs(&project.directory) {
-                                        log::error!("SSL removal failed: {}", e);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
+                            });
+                    });
             });
-        });
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
-use egui::{Color32, Pos2, Stroke, Ui, Vec2, RichText};
 use crate::ui::theme::*;
+use egui::{Color32, Pos2, RichText, Stroke, Ui, Vec2};
 
 /// Draw a status indicator dot
 pub fn status_dot(ui: &mut Ui, running: bool) -> egui::Response {
@@ -9,10 +9,15 @@ pub fn status_dot(ui: &mut Ui, running: bool) -> egui::Response {
 
     if ui.is_rect_visible(rect) {
         let center = rect.center();
-        let color = if running { COLOR_SUCCESS } else { COLOR_TEXT_MUTED };
+        let color = if running {
+            COLOR_SUCCESS
+        } else {
+            COLOR_TEXT_MUTED
+        };
 
         if running {
-            ui.painter().circle_filled(center, 6.0, COLOR_SUCCESS.gamma_multiply(0.3));
+            ui.painter()
+                .circle_filled(center, 6.0, COLOR_SUCCESS.gamma_multiply(0.3));
         }
         ui.painter().circle_filled(center, 4.0, color);
     }
@@ -42,7 +47,10 @@ pub fn card_frame(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) {
 /// Draw a styled button - Primary
 pub fn primary_button(ui: &mut Ui, text: &str) -> egui::Response {
     let button = egui::Button::new(
-        egui::RichText::new(text).color(Color32::WHITE).size(13.0).strong(),
+        egui::RichText::new(text)
+            .color(Color32::WHITE)
+            .size(13.0)
+            .strong(),
     )
     .fill(COLOR_PRIMARY)
     .corner_radius(egui::CornerRadius::same(8))
@@ -55,7 +63,10 @@ pub fn primary_button(ui: &mut Ui, text: &str) -> egui::Response {
 /// Draw a styled button - Danger
 pub fn danger_button(ui: &mut Ui, text: &str) -> egui::Response {
     let button = egui::Button::new(
-        egui::RichText::new(text).color(Color32::WHITE).size(13.0).strong(),
+        egui::RichText::new(text)
+            .color(Color32::WHITE)
+            .size(13.0)
+            .strong(),
     )
     .fill(COLOR_ERROR)
     .corner_radius(egui::CornerRadius::same(8))
@@ -67,13 +78,11 @@ pub fn danger_button(ui: &mut Ui, text: &str) -> egui::Response {
 
 /// Draw a styled button - Secondary
 pub fn secondary_button(ui: &mut Ui, text: &str) -> egui::Response {
-    let button = egui::Button::new(
-        egui::RichText::new(text).color(COLOR_TEXT).size(13.0),
-    )
-    .fill(Color32::TRANSPARENT) // Ghost button style
-    .corner_radius(egui::CornerRadius::same(6))
-    .min_size(Vec2::new(0.0, 32.0))
-    .stroke(Stroke::new(1.0, COLOR_BORDER));
+    let button = egui::Button::new(egui::RichText::new(text).color(COLOR_TEXT).size(13.0))
+        .fill(Color32::TRANSPARENT) // Ghost button style
+        .corner_radius(egui::CornerRadius::same(6))
+        .min_size(Vec2::new(0.0, 32.0))
+        .stroke(Stroke::new(1.0, COLOR_BORDER));
 
     ui.add(button)
 }
@@ -100,24 +109,19 @@ pub fn sparkline(ui: &mut Ui, values: &[f32], max_val: f32, color: Color32, size
         }
 
         // Draw fill (trapezoids)
-        let fill_color = Color32::from_rgba_unmultiplied(
-            color.r(),
-            color.g(),
-            color.b(),
-            20,
-        );
+        let fill_color = Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 20);
 
         for i in 1..points.len() {
-             let p1 = points[i - 1];
-             let p2 = points[i];
-             let b1 = Pos2::new(p1.x, rect.bottom());
-             let b2 = Pos2::new(p2.x, rect.bottom());
+            let p1 = points[i - 1];
+            let p2 = points[i];
+            let b1 = Pos2::new(p1.x, rect.bottom());
+            let b2 = Pos2::new(p2.x, rect.bottom());
 
-             painter.add(egui::Shape::convex_polygon(
-                 vec![p1, p2, b2, b1],
-                 fill_color,
-                 Stroke::NONE,
-             ));
+            painter.add(egui::Shape::convex_polygon(
+                vec![p1, p2, b2, b1],
+                fill_color,
+                Stroke::NONE,
+            ));
         }
 
         // Draw line
@@ -151,16 +155,24 @@ pub fn toggle_switch(ui: &mut Ui, on: &mut bool) -> egui::Response {
         let how_on = ui.ctx().animate_bool_with_time(response.id, *on, 0.15);
 
         let bg_color = Color32::from_rgb(
-            (COLOR_BG_HOVER.r() as f32 + (COLOR_PRIMARY.r() as f32 - COLOR_BG_HOVER.r() as f32) * how_on) as u8,
-            (COLOR_BG_HOVER.g() as f32 + (COLOR_PRIMARY.g() as f32 - COLOR_BG_HOVER.g() as f32) * how_on) as u8,
-            (COLOR_BG_HOVER.b() as f32 + (COLOR_PRIMARY.b() as f32 - COLOR_BG_HOVER.b() as f32) * how_on) as u8,
+            (COLOR_BG_HOVER.r() as f32
+                + (COLOR_PRIMARY.r() as f32 - COLOR_BG_HOVER.r() as f32) * how_on)
+                as u8,
+            (COLOR_BG_HOVER.g() as f32
+                + (COLOR_PRIMARY.g() as f32 - COLOR_BG_HOVER.g() as f32) * how_on)
+                as u8,
+            (COLOR_BG_HOVER.b() as f32
+                + (COLOR_PRIMARY.b() as f32 - COLOR_BG_HOVER.b() as f32) * how_on)
+                as u8,
         );
 
         let circle_x = egui::lerp((rect.left() + 10.0)..=(rect.right() - 10.0), how_on);
         let circle_center = Pos2::new(circle_x, rect.center().y);
 
-        ui.painter().rect_filled(rect, egui::CornerRadius::same(10), bg_color);
-        ui.painter().circle_filled(circle_center, 7.0, Color32::WHITE);
+        ui.painter()
+            .rect_filled(rect, egui::CornerRadius::same(10), bg_color);
+        ui.painter()
+            .circle_filled(circle_center, 7.0, Color32::WHITE);
     }
 
     response
@@ -175,17 +187,24 @@ pub fn stat_card(ui: &mut Ui, label: &str, value: &str, icon: &str, color: Color
         .inner_margin(egui::Margin::same(16))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                 ui.label(RichText::new(icon).size(20.0).color(color));
-                 ui.vertical(|ui| {
-                      ui.label(RichText::new(label).size(11.0).color(COLOR_TEXT_MUTED));
-                      ui.label(RichText::new(value).size(20.0).strong().color(COLOR_TEXT));
-                 });
+                ui.label(RichText::new(icon).size(20.0).color(color));
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(label).size(11.0).color(COLOR_TEXT_MUTED));
+                    ui.label(RichText::new(value).size(20.0).strong().color(COLOR_TEXT));
+                });
             });
         });
 }
 
 /// Draw a compact service card for dashboard
-pub fn service_card_compact(ui: &mut Ui, name: &str, icon: &str, version: &str, port: u16, running: bool) {
+pub fn service_card_compact(
+    ui: &mut Ui,
+    name: &str,
+    icon: &str,
+    version: &str,
+    port: u16,
+    running: bool,
+) {
     egui::Frame::new()
         .fill(COLOR_BG_CARD)
         .corner_radius(egui::CornerRadius::same(10))
@@ -198,10 +217,14 @@ pub fn service_card_compact(ui: &mut Ui, name: &str, icon: &str, version: &str, 
                 ui.vertical(|ui| {
                     ui.label(RichText::new(name).size(14.0).strong().color(COLOR_TEXT));
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(format!("v{} ● Port: {}", version, port)).size(10.0).color(COLOR_TEXT_DIM));
+                        ui.label(
+                            RichText::new(format!("v{} ● Port: {}", version, port))
+                                .size(10.0)
+                                .color(COLOR_TEXT_DIM),
+                        );
                         if running {
-                             ui.add_space(8.0);
-                             ui.label(RichText::new("●").size(10.0).color(COLOR_SUCCESS));
+                            ui.add_space(8.0);
+                            ui.label(RichText::new("●").size(10.0).color(COLOR_SUCCESS));
                         }
                     });
                 });
@@ -210,7 +233,12 @@ pub fn service_card_compact(ui: &mut Ui, name: &str, icon: &str, version: &str, 
                     if running {
                         ui.label(RichText::new("UP").size(9.0).strong().color(COLOR_SUCCESS));
                     } else {
-                        ui.label(RichText::new("DOWN").size(9.0).strong().color(COLOR_TEXT_MUTED));
+                        ui.label(
+                            RichText::new("DOWN")
+                                .size(9.0)
+                                .strong()
+                                .color(COLOR_TEXT_MUTED),
+                        );
                     }
                 });
             });

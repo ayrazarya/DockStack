@@ -1,11 +1,11 @@
 #![allow(dead_code)]
-use sysinfo::System;
+use crossbeam_channel::{Receiver, Sender};
+use std::collections::VecDeque;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use crossbeam_channel::{Sender, Receiver};
-use std::collections::VecDeque;
+use sysinfo::System;
 
 #[derive(Debug, Clone, Default)]
 pub struct SystemStats {
@@ -124,8 +124,12 @@ impl ResourceMonitor {
         thread::spawn(move || {
             while *running_cont.lock().unwrap() {
                 let output = Command::new("docker")
-                    .args(["stats", "--no-stream", "--format",
-                        "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}"])
+                    .args([
+                        "stats",
+                        "--no-stream",
+                        "--format",
+                        "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}",
+                    ])
                     .output();
 
                 if let Ok(out) = output {

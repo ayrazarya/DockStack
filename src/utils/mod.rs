@@ -45,7 +45,10 @@ pub fn open_directory(path: &str) {
 }
 
 pub fn load_icon() -> Option<egui::IconData> {
-    let icon_data = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/images/icon.png"));
+    let icon_data = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/images/icon.png"
+    ));
     match image::load_from_memory(icon_data) {
         Ok(img) => {
             let rgba = img.to_rgba8();

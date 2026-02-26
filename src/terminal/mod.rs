@@ -1,9 +1,9 @@
+use crossbeam_channel::{Receiver, Sender};
 use portable_pty::{native_pty_system, Child, CommandBuilder, PtySize};
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use crossbeam_channel::{Receiver, Sender};
-use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -43,7 +43,7 @@ impl EmbeddedTerminal {
 
         thread::spawn(move || {
             let pty_system = native_pty_system();
-            
+
             let pair = match pty_system.openpty(PtySize {
                 rows: 24,
                 cols: 80,
@@ -53,22 +53,31 @@ impl EmbeddedTerminal {
                 Ok(p) => p,
                 Err(e) => {
                     *running.lock().unwrap() = false;
-                    tx.send(TerminalEvent::Error(format!("Failed to open PTY: {}", e))).ok();
+                    tx.send(TerminalEvent::Error(format!("Failed to open PTY: {}", e)))
+                        .ok();
                     return;
                 }
             };
 
-            let shell = if cfg!(target_os = "windows") { "powershell.exe" } else { "bash" };
+            let shell = if cfg!(target_os = "windows") {
+                "powershell.exe"
+            } else {
+                "bash"
+            };
             let mut cmd = CommandBuilder::new(shell);
             if !cfg!(target_os = "windows") {
                 cmd.arg("-i"); // Interactive
             }
-            
+
             let mut child: Box<dyn Child + Send> = match pair.slave.spawn_command(cmd) {
                 Ok(c) => c,
                 Err(e) => {
                     *running.lock().unwrap() = false;
-                    tx.send(TerminalEvent::Error(format!("Failed to spawn shell: {}", e))).ok();
+                    tx.send(TerminalEvent::Error(format!(
+                        "Failed to spawn shell: {}",
+                        e
+                    )))
+                    .ok();
                     return;
                 }
             };
@@ -90,17 +99,20 @@ impl EmbeddedTerminal {
                 let mut buffer = [0u8; 4096];
                 let mut line_buffer = String::new();
                 loop {
-                    if !*running_out.lock().unwrap() { break; }
+                    if !*running_out.lock().unwrap() {
+                        break;
+                    }
                     match reader.read(&mut buffer) {
                         Ok(0) => break,
                         Ok(n) => {
                             let data = String::from_utf8_lossy(&buffer[..n]);
                             line_buffer.push_str(&data);
-                            
+
                             if line_buffer.contains('\n') {
-                                let mut lines: Vec<String> = line_buffer.split('\n').map(|s| s.to_string()).collect();
+                                let mut lines: Vec<String> =
+                                    line_buffer.split('\n').map(|s| s.to_string()).collect();
                                 line_buffer = lines.pop().unwrap_or_default(); // Keep the last partial line
-                                
+
                                 let mut l = lines_out.lock().unwrap();
                                 for line in lines {
                                     let cleaned = line.replace("\r", "");
@@ -108,7 +120,7 @@ impl EmbeddedTerminal {
                                         l.push_back(cleaned);
                                     }
                                 }
-                                
+
                                 if l.len() > 1000 {
                                     let drain = l.len() - 800;
                                     l.drain(0..drain);
@@ -129,7 +141,11 @@ impl EmbeddedTerminal {
                 }
                 Err(e) => {
                     *running.lock().unwrap() = false;
-                    tx.send(TerminalEvent::Error(format!("Shell exited with error: {}", e))).ok();
+                    tx.send(TerminalEvent::Error(format!(
+                        "Shell exited with error: {}",
+                        e
+                    )))
+                    .ok();
                 }
             }
         });
@@ -137,7 +153,11 @@ impl EmbeddedTerminal {
 
     pub fn send_input(&self, input: &str) {
         if let Some(ref mut writer) = *self.master_writer.lock().unwrap() {
-            let data = if input.ends_with('\n') { input.to_string() } else { format!("{}\n", input) };
+            let data = if input.ends_with('\n') {
+                input.to_string()
+            } else {
+                format!("{}\n", input)
+            };
             let _ = writer.write_all(data.as_bytes());
             let _ = writer.flush();
         }

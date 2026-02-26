@@ -24,7 +24,10 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
             "postgresql" => {
                 let mut s = YamlMap::new();
                 s.insert(y_str("image"), y_str(&format!("postgres:{}", svc.version)));
-                s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_postgresql", project.id)));
+                s.insert(
+                    y_str("container_name"),
+                    y_str(&format!("dockstack_{}_postgresql", project.id)),
+                );
                 s.insert(y_str("restart"), y_str("unless-stopped"));
 
                 let mut env = YamlMap::new();
@@ -36,13 +39,18 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
                 let ports = vec![YamlVal::String(format!("{}:5432", svc.port))];
                 s.insert(y_str("ports"), YamlVal::Sequence(ports));
 
-                let vols = vec![YamlVal::String("postgres_data:/var/lib/postgresql/data".to_string())];
+                let vols = vec![YamlVal::String(
+                    "postgres_data:/var/lib/postgresql/data".to_string(),
+                )];
                 s.insert(y_str("volumes"), YamlVal::Sequence(vols));
 
                 let nets = vec![YamlVal::String(network_name.clone())];
                 s.insert(y_str("networks"), YamlVal::Sequence(nets));
 
-                s.insert(y_str("healthcheck"), healthcheck("pg_isready -U postgres", 10, 5, 5));
+                s.insert(
+                    y_str("healthcheck"),
+                    healthcheck("pg_isready -U postgres", 10, 5, 5),
+                );
 
                 services.insert(y_str("postgresql"), YamlVal::Mapping(s));
                 volumes.insert(y_str("postgres_data"), YamlVal::Mapping(YamlMap::new()));
@@ -50,7 +58,10 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
             "mysql" => {
                 let mut s = YamlMap::new();
                 s.insert(y_str("image"), y_str(&format!("mysql:{}", svc.version)));
-                s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_mysql", project.id)));
+                s.insert(
+                    y_str("container_name"),
+                    y_str(&format!("dockstack_{}_mysql", project.id)),
+                );
                 s.insert(y_str("restart"), y_str("unless-stopped"));
 
                 let mut env = YamlMap::new();
@@ -68,7 +79,10 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
                 let nets = vec![YamlVal::String(network_name.clone())];
                 s.insert(y_str("networks"), YamlVal::Sequence(nets));
 
-                s.insert(y_str("healthcheck"), healthcheck("mysqladmin ping -h localhost", 10, 5, 5));
+                s.insert(
+                    y_str("healthcheck"),
+                    healthcheck("mysqladmin ping -h localhost", 10, 5, 5),
+                );
 
                 services.insert(y_str("mysql"), YamlVal::Mapping(s));
                 volumes.insert(y_str("mysql_data"), YamlVal::Mapping(YamlMap::new()));
@@ -76,13 +90,20 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
             "php" => {
                 let mut s = YamlMap::new();
                 s.insert(y_str("image"), y_str(&format!("php:{}", svc.version)));
-                s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_php", project.id)));
+                s.insert(
+                    y_str("container_name"),
+                    y_str(&format!("dockstack_{}_php", project.id)),
+                );
                 s.insert(y_str("restart"), y_str("unless-stopped"));
 
-                let mut vols = vec![
-                    YamlVal::String(format!("{}/www:/var/www/html", project.directory)),
-                ];
-                vols.push(YamlVal::String(format!("{}/php/php.ini:/usr/local/etc/php/conf.d/dockstack.ini", project.directory)));
+                let mut vols = vec![YamlVal::String(format!(
+                    "{}/www:/var/www/html",
+                    project.directory
+                ))];
+                vols.push(YamlVal::String(format!(
+                    "{}/php/php.ini:/usr/local/etc/php/conf.d/dockstack.ini",
+                    project.directory
+                )));
                 s.insert(y_str("volumes"), YamlVal::Sequence(vols));
 
                 let nets = vec![YamlVal::String(network_name.clone())];
@@ -93,15 +114,23 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
             "apache" => {
                 let mut s = YamlMap::new();
                 s.insert(y_str("image"), y_str(&format!("httpd:{}", svc.version)));
-                s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_apache", project.id)));
+                s.insert(
+                    y_str("container_name"),
+                    y_str(&format!("dockstack_{}_apache", project.id)),
+                );
                 s.insert(y_str("restart"), y_str("unless-stopped"));
 
                 let ports = vec![YamlVal::String(format!("{}:80", svc.port))];
                 s.insert(y_str("ports"), YamlVal::Sequence(ports));
 
                 let vols = vec![
-                    YamlVal::String(format!("{}/www:/usr/local/apache2/htdocs/", project.directory)),
-                    YamlVal::String("./apache/httpd.conf:/usr/local/apache2/conf/httpd.conf".to_string()),
+                    YamlVal::String(format!(
+                        "{}/www:/usr/local/apache2/htdocs/",
+                        project.directory
+                    )),
+                    YamlVal::String(
+                        "./apache/httpd.conf:/usr/local/apache2/conf/httpd.conf".to_string(),
+                    ),
                 ];
                 s.insert(y_str("volumes"), YamlVal::Sequence(vols));
 
@@ -113,7 +142,10 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
             "nginx" => {
                 let mut s = YamlMap::new();
                 s.insert(y_str("image"), y_str(&format!("nginx:{}", svc.version)));
-                s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_nginx", project.id)));
+                s.insert(
+                    y_str("container_name"),
+                    y_str(&format!("dockstack_{}_nginx", project.id)),
+                );
                 s.insert(y_str("restart"), y_str("unless-stopped"));
 
                 let mut ports = vec![YamlVal::String(format!("{}:80", svc.port))];
@@ -124,7 +156,9 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
 
                 let mut vols = vec![
                     YamlVal::String(format!("{}/www:/usr/share/nginx/html", project.directory)),
-                    YamlVal::String("./nginx/default.conf:/etc/nginx/conf.d/default.conf".to_string()),
+                    YamlVal::String(
+                        "./nginx/default.conf:/etc/nginx/conf.d/default.conf".to_string(),
+                    ),
                 ];
                 if project.ssl_enabled {
                     vols.push(YamlVal::String("./certs:/etc/nginx/certs:ro".to_string()));
@@ -138,18 +172,24 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
             }
             "phpmyadmin" => {
                 let mut s = YamlMap::new();
-                s.insert(y_str("image"), y_str(&format!("phpmyadmin:{}", svc.version)));
-                s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_phpmyadmin", project.id)));
+                s.insert(
+                    y_str("image"),
+                    y_str(&format!("phpmyadmin:{}", svc.version)),
+                );
+                s.insert(
+                    y_str("container_name"),
+                    y_str(&format!("dockstack_{}_phpmyadmin", project.id)),
+                );
                 s.insert(y_str("restart"), y_str("unless-stopped"));
 
                 let mut env = YamlMap::new();
                 env.insert(y_str("PMA_HOST"), y_str("mysql"));
                 env.insert(y_str("PMA_ARBITRARY"), y_str("1"));
-                
+
                 for (k, v) in &svc.env_vars {
                     env.insert(y_str(k), y_str(v));
                 }
-                
+
                 s.insert(y_str("environment"), YamlVal::Mapping(env));
 
                 let ports = vec![YamlVal::String(format!("{}:80", svc.port))];
@@ -167,8 +207,14 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
             }
             "pgadmin" => {
                 let mut s = YamlMap::new();
-                s.insert(y_str("image"), y_str(&format!("dpage/pgadmin4:{}", svc.version)));
-                s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_pgadmin", project.id)));
+                s.insert(
+                    y_str("image"),
+                    y_str(&format!("dpage/pgadmin4:{}", svc.version)),
+                );
+                s.insert(
+                    y_str("container_name"),
+                    y_str(&format!("dockstack_{}_pgadmin", project.id)),
+                );
                 s.insert(y_str("restart"), y_str("unless-stopped"));
 
                 let mut env = YamlMap::new();
@@ -186,7 +232,11 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
                 let nets = vec![YamlVal::String(network_name.clone())];
                 s.insert(y_str("networks"), YamlVal::Sequence(nets));
 
-                if project.services.get("postgresql").is_some_and(|s| s.enabled) {
+                if project
+                    .services
+                    .get("postgresql")
+                    .is_some_and(|s| s.enabled)
+                {
                     let deps = vec![YamlVal::String("postgresql".to_string())];
                     s.insert(y_str("depends_on"), YamlVal::Sequence(deps));
                 }
@@ -197,7 +247,10 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
             "redis" => {
                 let mut s = YamlMap::new();
                 s.insert(y_str("image"), y_str(&format!("redis:{}", svc.version)));
-                s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_redis", project.id)));
+                s.insert(
+                    y_str("container_name"),
+                    y_str(&format!("dockstack_{}_redis", project.id)),
+                );
                 s.insert(y_str("restart"), y_str("unless-stopped"));
 
                 let ports = vec![YamlVal::String(format!("{}:6379", svc.port))];
@@ -209,7 +262,10 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
                 let nets = vec![YamlVal::String(network_name.clone())];
                 s.insert(y_str("networks"), YamlVal::Sequence(nets));
 
-                s.insert(y_str("healthcheck"), healthcheck("redis-cli ping", 10, 5, 5));
+                s.insert(
+                    y_str("healthcheck"),
+                    healthcheck("redis-cli ping", 10, 5, 5),
+                );
 
                 services.insert(y_str("redis"), YamlVal::Mapping(s));
                 volumes.insert(y_str("redis_data"), YamlVal::Mapping(YamlMap::new()));
@@ -217,7 +273,10 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
             "adminer" => {
                 let mut s = YamlMap::new();
                 s.insert(y_str("image"), y_str(&format!("adminer:{}", svc.version)));
-                s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_adminer", project.id)));
+                s.insert(
+                    y_str("container_name"),
+                    y_str(&format!("dockstack_{}_adminer", project.id)),
+                );
                 s.insert(y_str("restart"), y_str("unless-stopped"));
 
                 let ports = vec![YamlVal::String(format!("{}:8080", svc.port))];
@@ -237,7 +296,10 @@ pub fn generate_compose(project: &ProjectConfig) -> String {
                     if let Some(img) = &svc.image {
                         let mut s = YamlMap::new();
                         s.insert(y_str("image"), y_str(&format!("{}:{}", img, svc.version)));
-                        s.insert(y_str("container_name"), y_str(&format!("dockstack_{}_{}", project.id, name)));
+                        s.insert(
+                            y_str("container_name"),
+                            y_str(&format!("dockstack_{}_{}", project.id, name)),
+                        );
                         s.insert(y_str("restart"), y_str("unless-stopped"));
 
                         let mut env = YamlMap::new();
@@ -303,12 +365,16 @@ pub fn write_compose_file(project: &ProjectConfig) -> std::io::Result<String> {
 }
 
 fn write_php_config(project: &ProjectConfig) -> std::io::Result<()> {
-    let svc = project.services.get("php").unwrap();
-    if svc.is_locked { return Ok(()); }
+    let Some(svc) = project.services.get("php") else {
+        return Ok(());
+    };
+    if svc.is_locked {
+        return Ok(());
+    }
 
     let php_dir = Path::new(&project.directory).join("php");
     fs::create_dir_all(&php_dir)?;
-    
+
     let ini_path = php_dir.join("php.ini");
     if ini_path.exists() {
         let existing = fs::read_to_string(&ini_path)?;
@@ -317,8 +383,12 @@ fn write_php_config(project: &ProjectConfig) -> std::io::Result<()> {
         }
     }
 
-    let mem_limit = svc.settings.get("memory_limit").cloned().unwrap_or_else(|| "256M".to_string());
-    
+    let mem_limit = svc
+        .settings
+        .get("memory_limit")
+        .cloned()
+        .unwrap_or_else(|| "256M".to_string());
+
     let mut content = MANAGED_HEADER.to_string();
     content.push_str(&format!("memory_limit = {}\n", mem_limit));
     content.push_str("upload_max_filesize = 100M\n");
@@ -326,14 +396,18 @@ fn write_php_config(project: &ProjectConfig) -> std::io::Result<()> {
     content.push_str("max_execution_time = 300\n");
     content.push_str("display_errors = On\n");
     content.push_str("error_reporting = E_ALL\n");
-    
+
     fs::write(ini_path, content)?;
     Ok(())
 }
 
 fn write_nginx_config(project: &ProjectConfig) -> std::io::Result<()> {
-    let svc = project.services.get("nginx").unwrap();
-    if svc.is_locked { return Ok(()); }
+    let Some(svc) = project.services.get("nginx") else {
+        return Ok(());
+    };
+    if svc.is_locked {
+        return Ok(());
+    }
 
     let nginx_dir = Path::new(&project.directory).join("nginx");
     fs::create_dir_all(&nginx_dir)?;
@@ -347,7 +421,8 @@ fn write_nginx_config(project: &ProjectConfig) -> std::io::Result<()> {
     }
 
     let config = if project.ssl_enabled {
-        format!(r#"{}server {{
+        format!(
+            r#"{}server {{
     listen 80;
     server_name {};
     return 301 https://$server_name$request_uri;
@@ -374,9 +449,12 @@ server {{
         include fastcgi_params;
     }}
 }}
-"#, MANAGED_HEADER, project.domain, project.domain)
+"#,
+            MANAGED_HEADER, project.domain, project.domain
+        )
     } else {
-        format!(r#"{}server {{
+        format!(
+            r#"{}server {{
     listen 80;
     server_name {};
 
@@ -394,7 +472,9 @@ server {{
         include fastcgi_params;
     }}
 }}
-"#, MANAGED_HEADER, project.domain)
+"#,
+            MANAGED_HEADER, project.domain
+        )
     };
 
     fs::write(config_path, config)?;
@@ -402,8 +482,12 @@ server {{
 }
 
 fn write_apache_config(project: &ProjectConfig) -> std::io::Result<()> {
-    let svc = project.services.get("apache").unwrap();
-    if svc.is_locked { return Ok(()); }
+    let Some(svc) = project.services.get("apache") else {
+        return Ok(());
+    };
+    if svc.is_locked {
+        return Ok(());
+    }
 
     let apache_dir = Path::new(&project.directory).join("apache");
     fs::create_dir_all(&apache_dir)?;
@@ -417,12 +501,16 @@ fn write_apache_config(project: &ProjectConfig) -> std::io::Result<()> {
     }
 
     // Basic Apache 2.4 config with DirectoryIndex and .htaccess enabled
-    let mut config = format!(r#"{}
+    let mut config = format!(
+        r#"{}
 ServerRoot "/usr/local/apache2"
 Listen 80
 ServerName {}
-"#, MANAGED_HEADER, project.domain);
-    config.push_str(r#"
+"#,
+        MANAGED_HEADER, project.domain
+    );
+    config.push_str(
+        r#"
 LoadModule mpm_event_module modules/mod_mpm_event.so
 LoadModule authz_core_module modules/mod_authz_core.so
 LoadModule authz_host_module modules/mod_authz_host.so
@@ -468,7 +556,8 @@ DocumentRoot "/usr/local/apache2/htdocs"
 <FilesMatch \.php$>
     SetHandler "proxy:fcgi://php:9000"
 </FilesMatch>
-"#);
+"#,
+    );
 
     fs::write(config_path, config)?;
     Ok(())
@@ -482,7 +571,8 @@ fn write_default_index(project: &ProjectConfig) -> std::io::Result<()> {
     let index_html = www_dir.join("index.html");
 
     if !index_php.exists() && !index_html.exists() {
-        let content = format!(r#"<!DOCTYPE html>
+        let content = format!(
+            r#"<!DOCTYPE html>
 <html>
 <head>
     <title>DockStack - {}</title>
@@ -501,8 +591,10 @@ fn write_default_index(project: &ProjectConfig) -> std::io::Result<()> {
         <p><small>PHP Version: <?php echo phpversion(); ?></small></p>
     </div>
 </body>
-</html>"#, project.name, project.name);
-        
+</html>"#,
+            project.name, project.name
+        );
+
         fs::write(index_php, content)?;
     }
     Ok(())
@@ -516,13 +608,13 @@ fn healthcheck(test: &str, interval: u32, timeout: u32, retries: u32) -> YamlVal
     let mut hc = YamlMap::new();
     hc.insert(
         y_str("test"),
-        YamlVal::Sequence(vec![
-            y_str("CMD-SHELL"),
-            y_str(test),
-        ]),
+        YamlVal::Sequence(vec![y_str("CMD-SHELL"), y_str(test)]),
     );
     hc.insert(y_str("interval"), y_str(&format!("{}s", interval)));
     hc.insert(y_str("timeout"), y_str(&format!("{}s", timeout)));
-    hc.insert(y_str("retries"), YamlVal::Number(serde_yaml::Number::from(retries)));
+    hc.insert(
+        y_str("retries"),
+        YamlVal::Number(serde_yaml::Number::from(retries)),
+    );
     YamlVal::Mapping(hc)
 }
