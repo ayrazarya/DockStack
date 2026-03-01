@@ -26,7 +26,7 @@ pub struct SystemTray {
 
 impl SystemTray {
     pub fn new() -> Self {
-        let (command_tx, command_rx) = crossbeam_channel::unbounded();
+        let (command_tx, command_rx) = crossbeam_channel::bounded(100);
         Self {
             command_tx,
             command_rx,

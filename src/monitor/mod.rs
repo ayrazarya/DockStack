@@ -39,11 +39,13 @@ pub struct ResourceMonitor {
     pub event_tx: Sender<MonitorEvent>,
     pub event_rx: Receiver<MonitorEvent>,
     running: Arc<Mutex<bool>>,
+    sys_thread: Arc<Mutex<Option<thread::JoinHandle<()>>>>,
+    cont_thread: Arc<Mutex<Option<thread::JoinHandle<()>>>>,
 }
 
 impl ResourceMonitor {
     pub fn new() -> Self {
-        let (event_tx, event_rx) = crossbeam_channel::unbounded();
+        let (event_tx, event_rx) = crossbeam_channel::bounded(1000);
         Self {
             system_stats: Arc::new(Mutex::new(SystemStats::default())),
             container_stats: Arc::new(Mutex::new(Vec::new())),
@@ -52,13 +54,15 @@ impl ResourceMonitor {
             event_tx,
             event_rx,
             running: Arc::new(Mutex::new(false)),
+            sys_thread: Arc::new(Mutex::new(None)),
+            cont_thread: Arc::new(Mutex::new(None)),
         }
     }
 
     pub fn start(&self) {
         let running = self.running.clone();
         {
-            let mut r = running.lock().unwrap();
+            let mut r = running.lock().unwrap_or_else(|e| e.into_inner());
             if *r {
                 return;
             }
@@ -72,9 +76,9 @@ impl ResourceMonitor {
         let tx = self.event_tx.clone();
         let running_sys = self.running.clone();
 
-        thread::spawn(move || {
+        let sys_handle = thread::spawn(move || {
             let mut sys = System::new_all();
-            while *running_sys.lock().unwrap() {
+            while *running_sys.lock().unwrap_or_else(|e| e.into_inner()) {
                 sys.refresh_cpu_usage();
                 sys.refresh_memory();
 
@@ -94,17 +98,17 @@ impl ResourceMonitor {
                     memory_percent: mem_pct,
                 };
 
-                *sys_stats.lock().unwrap() = stats.clone();
+                *sys_stats.lock().unwrap_or_else(|e| e.into_inner()) = stats.clone();
 
                 {
-                    let mut hist = cpu_history.lock().unwrap();
+                    let mut hist = cpu_history.lock().unwrap_or_else(|e| e.into_inner());
                     hist.push_back(cpu);
                     if hist.len() > 60 {
                         hist.pop_front();
                     }
                 }
                 {
-                    let mut hist = mem_history.lock().unwrap();
+                    let mut hist = mem_history.lock().unwrap_or_else(|e| e.into_inner());
                     hist.push_back(mem_pct);
                     if hist.len() > 60 {
                         hist.pop_front();
@@ -115,14 +119,15 @@ impl ResourceMonitor {
                 thread::sleep(Duration::from_secs(1));
             }
         });
+        *self.sys_thread.lock().unwrap() = Some(sys_handle);
 
         // Container stats thread
         let container_stats = self.container_stats.clone();
         let tx2 = self.event_tx.clone();
         let running_cont = self.running.clone();
 
-        thread::spawn(move || {
-            while *running_cont.lock().unwrap() {
+        let cont_handle = thread::spawn(move || {
+            while *running_cont.lock().unwrap_or_else(|e| e.into_inner()) {
                 let output = Command::new("docker")
                     .args([
                         "stats",
@@ -150,20 +155,27 @@ impl ResourceMonitor {
                         })
                         .collect();
 
-                    *container_stats.lock().unwrap() = stats.clone();
+                    *container_stats.lock().unwrap_or_else(|e| e.into_inner()) = stats.clone();
                     tx2.send(MonitorEvent::ContainerUpdate(stats)).ok();
                 }
 
                 thread::sleep(Duration::from_secs(2));
             }
         });
+        *self.cont_thread.lock().unwrap() = Some(cont_handle);
     }
 
     pub fn stop(&self) {
-        *self.running.lock().unwrap() = false;
+        *self.running.lock().unwrap_or_else(|e| e.into_inner()) = false;
+        if let Some(h) = self.sys_thread.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            let _ = h.join();
+        }
+        if let Some(h) = self.cont_thread.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            let _ = h.join();
+        }
     }
 
     pub fn is_running(&self) -> bool {
-        *self.running.lock().unwrap()
+        *self.running.lock().unwrap_or_else(|e| e.into_inner())
     }
 }

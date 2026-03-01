@@ -52,6 +52,16 @@ impl SslManager {
         fs::write(key_path, key_pair.serialize_pem())
             .map_err(|e| format!("Failed to write key: {}", e))?;
 
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(metadata) = fs::metadata(key_path) {
+                let mut perms = metadata.permissions();
+                perms.set_mode(0o600);
+                let _ = fs::set_permissions(key_path, perms);
+            }
+        }
+
         Ok(())
     }
 
@@ -79,6 +89,15 @@ impl SslManager {
             .map_err(|e| format!("Failed to run openssl: {}", e))?;
 
         if output.status.success() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(metadata) = fs::metadata(key_path) {
+                    let mut perms = metadata.permissions();
+                    perms.set_mode(0o600);
+                    let _ = fs::set_permissions(key_path, perms);
+                }
+            }
             Ok((
                 cert_path.to_string_lossy().to_string(),
                 key_path.to_string_lossy().to_string(),

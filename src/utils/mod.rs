@@ -17,10 +17,12 @@ pub fn format_bytes(bytes: u64) -> String {
 }
 
 pub fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len - 3])
+        let truncated: String = chars.into_iter().take(max_len - 3).collect();
+        format!("{}...", truncated)
     }
 }
 
@@ -65,6 +67,4 @@ pub fn load_icon() -> Option<egui::IconData> {
         }
     }
 }
-pub fn is_port_available(port: u16) -> bool {
-    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
-}
+

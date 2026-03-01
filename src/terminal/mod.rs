@@ -19,17 +19,19 @@ pub struct EmbeddedTerminal {
     pub event_rx: Receiver<TerminalEvent>,
     master_writer: Arc<Mutex<Option<Box<dyn Write + Send>>>>,
     running: Arc<Mutex<bool>>,
+    main_thread: Mutex<Option<thread::JoinHandle<()>>>,
 }
 
 impl EmbeddedTerminal {
     pub fn new() -> Self {
-        let (event_tx, event_rx) = crossbeam_channel::unbounded();
+        let (event_tx, event_rx) = crossbeam_channel::bounded(1000);
         Self {
             output_lines: Arc::new(Mutex::new(VecDeque::new())),
             event_tx,
             event_rx,
             master_writer: Arc::new(Mutex::new(None)),
             running: Arc::new(Mutex::new(false)),
+            main_thread: Mutex::new(None),
         }
     }
 
@@ -39,9 +41,9 @@ impl EmbeddedTerminal {
         let master_writer = self.master_writer.clone();
         let running = self.running.clone();
 
-        *running.lock().unwrap() = true;
+        *running.lock().unwrap_or_else(|e| e.into_inner()) = true;
 
-        thread::spawn(move || {
+        let handle = thread::spawn(move || {
             let pty_system = native_pty_system();
 
             let pair = match pty_system.openpty(PtySize {
@@ -52,7 +54,7 @@ impl EmbeddedTerminal {
             }) {
                 Ok(p) => p,
                 Err(e) => {
-                    *running.lock().unwrap() = false;
+                    *running.lock().unwrap_or_else(|e| e.into_inner()) = false;
                     tx.send(TerminalEvent::Error(format!("Failed to open PTY: {}", e)))
                         .ok();
                     return;
@@ -72,7 +74,7 @@ impl EmbeddedTerminal {
             let mut child: Box<dyn Child + Send> = match pair.slave.spawn_command(cmd) {
                 Ok(c) => c,
                 Err(e) => {
-                    *running.lock().unwrap() = false;
+                    *running.lock().unwrap_or_else(|e| e.into_inner()) = false;
                     tx.send(TerminalEvent::Error(format!(
                         "Failed to spawn shell: {}",
                         e
@@ -87,7 +89,7 @@ impl EmbeddedTerminal {
 
             // Set up writer
             let writer = pair.master.take_writer().unwrap();
-            *master_writer.lock().unwrap() = Some(writer);
+            *master_writer.lock().unwrap_or_else(|e| e.into_inner()) = Some(writer);
 
             // Reader thread
             let mut reader = pair.master.try_clone_reader().unwrap();
@@ -95,11 +97,11 @@ impl EmbeddedTerminal {
             let lines_out = output_lines.clone();
             let running_out = running.clone();
 
-            thread::spawn(move || {
+            let reader_handle = thread::spawn(move || {
                 let mut buffer = [0u8; 4096];
                 let mut line_buffer = String::new();
                 loop {
-                    if !*running_out.lock().unwrap() {
+                    if !*running_out.lock().unwrap_or_else(|e| e.into_inner()) {
                         break;
                     }
                     match reader.read(&mut buffer) {
@@ -113,7 +115,7 @@ impl EmbeddedTerminal {
                                     line_buffer.split('\n').map(|s| s.to_string()).collect();
                                 line_buffer = lines.pop().unwrap_or_default(); // Keep the last partial line
 
-                                let mut l = lines_out.lock().unwrap();
+                                let mut l = lines_out.lock().unwrap_or_else(|e| e.into_inner());
                                 for line in lines {
                                     let cleaned = line.replace("\r", "");
                                     if !cleaned.trim().is_empty() || line.len() > 2 {
@@ -136,11 +138,11 @@ impl EmbeddedTerminal {
             // Wait for exit
             match child.wait() {
                 Ok(_status) => {
-                    *running.lock().unwrap() = false;
+                    *running.lock().unwrap_or_else(|e| e.into_inner()) = false;
                     tx.send(TerminalEvent::Exited(0)).ok();
                 }
                 Err(e) => {
-                    *running.lock().unwrap() = false;
+                    *running.lock().unwrap_or_else(|e| e.into_inner()) = false;
                     tx.send(TerminalEvent::Error(format!(
                         "Shell exited with error: {}",
                         e
@@ -148,11 +150,14 @@ impl EmbeddedTerminal {
                     .ok();
                 }
             }
+            
+            let _ = reader_handle.join();
         });
+        *self.main_thread.lock().unwrap() = Some(handle);
     }
 
     pub fn send_input(&self, input: &str) {
-        if let Some(ref mut writer) = *self.master_writer.lock().unwrap() {
+        if let Some(ref mut writer) = *self.master_writer.lock().unwrap_or_else(|e| e.into_inner()) {
             let data = if input.ends_with('\n') {
                 input.to_string()
             } else {
@@ -164,6 +169,14 @@ impl EmbeddedTerminal {
     }
 
     pub fn is_running(&self) -> bool {
-        *self.running.lock().unwrap()
+        *self.running.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn stop(&self) {
+        *self.running.lock().unwrap() = false;
+        self.send_input("exit\n");
+        if let Some(h) = self.main_thread.lock().unwrap().take() {
+            let _ = h.join();
+        }
     }
 }
