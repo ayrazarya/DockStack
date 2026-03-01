@@ -481,10 +481,9 @@ impl DockerManager {
                     if let Some(stdout) = child.stdout.take() {
                         let reader = BufReader::new(stdout);
                         for line in reader.lines().map_while(Result::ok) {
-                            logs.lock().unwrap().push_back(line.clone());
-                            // Keep log buffer limited
                             {
                                 let mut l = logs.lock().unwrap();
+                                l.push_back(line.clone());
                                 if l.len() > 5000 {
                                     let drain_count = l.len() - 3000;
                                     l.drain(0..drain_count);
