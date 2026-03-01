@@ -62,7 +62,7 @@ impl ResourceMonitor {
     pub fn start(&self) {
         let running = self.running.clone();
         {
-            let mut r = running.lock().unwrap();
+            let mut r = running.lock().unwrap_or_else(|e| e.into_inner());
             if *r {
                 return;
             }
@@ -78,7 +78,7 @@ impl ResourceMonitor {
 
         let sys_handle = thread::spawn(move || {
             let mut sys = System::new_all();
-            while *running_sys.lock().unwrap() {
+            while *running_sys.lock().unwrap_or_else(|e| e.into_inner()) {
                 sys.refresh_cpu_usage();
                 sys.refresh_memory();
 
@@ -98,17 +98,17 @@ impl ResourceMonitor {
                     memory_percent: mem_pct,
                 };
 
-                *sys_stats.lock().unwrap() = stats.clone();
+                *sys_stats.lock().unwrap_or_else(|e| e.into_inner()) = stats.clone();
 
                 {
-                    let mut hist = cpu_history.lock().unwrap();
+                    let mut hist = cpu_history.lock().unwrap_or_else(|e| e.into_inner());
                     hist.push_back(cpu);
                     if hist.len() > 60 {
                         hist.pop_front();
                     }
                 }
                 {
-                    let mut hist = mem_history.lock().unwrap();
+                    let mut hist = mem_history.lock().unwrap_or_else(|e| e.into_inner());
                     hist.push_back(mem_pct);
                     if hist.len() > 60 {
                         hist.pop_front();
@@ -127,7 +127,7 @@ impl ResourceMonitor {
         let running_cont = self.running.clone();
 
         let cont_handle = thread::spawn(move || {
-            while *running_cont.lock().unwrap() {
+            while *running_cont.lock().unwrap_or_else(|e| e.into_inner()) {
                 let output = Command::new("docker")
                     .args([
                         "stats",
@@ -155,7 +155,7 @@ impl ResourceMonitor {
                         })
                         .collect();
 
-                    *container_stats.lock().unwrap() = stats.clone();
+                    *container_stats.lock().unwrap_or_else(|e| e.into_inner()) = stats.clone();
                     tx2.send(MonitorEvent::ContainerUpdate(stats)).ok();
                 }
 
@@ -166,16 +166,16 @@ impl ResourceMonitor {
     }
 
     pub fn stop(&self) {
-        *self.running.lock().unwrap() = false;
-        if let Some(h) = self.sys_thread.lock().unwrap().take() {
+        *self.running.lock().unwrap_or_else(|e| e.into_inner()) = false;
+        if let Some(h) = self.sys_thread.lock().unwrap_or_else(|e| e.into_inner()).take() {
             let _ = h.join();
         }
-        if let Some(h) = self.cont_thread.lock().unwrap().take() {
+        if let Some(h) = self.cont_thread.lock().unwrap_or_else(|e| e.into_inner()).take() {
             let _ = h.join();
         }
     }
 
     pub fn is_running(&self) -> bool {
-        *self.running.lock().unwrap()
+        *self.running.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
