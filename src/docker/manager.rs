@@ -103,7 +103,14 @@ impl DockerManager {
         let status = self.status.clone();
         let logs = self.logs.clone();
 
-        *status.lock().unwrap() = ServiceStatus::Starting;
+        {
+            let mut status_guard = status.lock().unwrap();
+            if matches!(*status_guard, ServiceStatus::Starting | ServiceStatus::Running | ServiceStatus::Stopping) {
+                return; // Prevent duplicate start loops
+            }
+            *status_guard = ServiceStatus::Starting;
+        }
+
         tx.send(DockerEvent::StatusChange(
             "all".to_string(),
             ServiceStatus::Starting,
@@ -226,7 +233,14 @@ impl DockerManager {
         let status = self.status.clone();
         let logs = self.logs.clone();
 
-        *status.lock().unwrap() = ServiceStatus::Stopping;
+        {
+            let mut status_guard = status.lock().unwrap();
+            if matches!(*status_guard, ServiceStatus::Stopping | ServiceStatus::Stopped | ServiceStatus::Starting) {
+                return;
+            }
+            *status_guard = ServiceStatus::Stopping;
+        }
+
         tx.send(DockerEvent::StatusChange(
             "all".to_string(),
             ServiceStatus::Stopping,
@@ -326,7 +340,13 @@ impl DockerManager {
         let status = self.status.clone();
         let logs = self.logs.clone();
 
-        *status.lock().unwrap() = ServiceStatus::Stopping;
+        {
+            let mut status_guard = status.lock().unwrap();
+            if matches!(*status_guard, ServiceStatus::Stopping | ServiceStatus::Starting) {
+                return;
+            }
+            *status_guard = ServiceStatus::Stopping;
+        }
 
         let use_compose_plugin = self.use_compose_plugin.clone();
 
