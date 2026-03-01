@@ -27,6 +27,25 @@ fn main() -> eframe::Result<()> {
 
     log::info!("Starting DockStack v0.1.0");
 
+    // Check and set DOCKER_API_VERSION for compatibility with older engines
+    if let Ok(output) = std::process::Command::new("docker")
+        .args(["version", "--format", "{{.Server.APIVersion}}"])
+        .output()
+    {
+        if output.status.success() {
+            let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !ver.is_empty() {
+                std::env::set_var("DOCKER_API_VERSION", ver.clone());
+                log::info!("Detected Docker API version: {} (injected into Env)", ver);
+            }
+        } else {
+            let err = String::from_utf8_lossy(&output.stderr);
+            log::warn!("Failed to fetch Docker Server API Version: {}", err.trim());
+        }
+    } else {
+        log::warn!("Docker CLI not found or failed to execute during boot version check.");
+    }
+
     let icon = utils::load_icon();
 
     let mut viewport = egui::ViewportBuilder::default()
