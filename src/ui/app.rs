@@ -107,8 +107,8 @@ impl DockStackApp {
             match event {
                 MonitorEvent::SystemUpdate(stats) => {
                     self.sys_stats = stats;
-                    self.cpu_history = self.monitor.cpu_history.lock().unwrap().clone();
-                    self.mem_history = self.monitor.mem_history.lock().unwrap().clone();
+                    self.cpu_history = self.monitor.cpu_history.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    self.mem_history = self.monitor.mem_history.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 }
                 MonitorEvent::ContainerUpdate(stats) => {
                     self.container_stats = stats;
@@ -192,7 +192,7 @@ impl DockStackApp {
 
             // Global Actions (Right aligned)
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let status = self.docker.status.lock().unwrap().clone();
+                let status = self.docker.status.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 let can_start = matches!(status, ServiceStatus::Stopped | ServiceStatus::Error(_));
                 let can_stop = matches!(status, ServiceStatus::Running);
 
@@ -342,7 +342,7 @@ impl eframe::App for DockStackApp {
                     .inner_margin(egui::Margin::symmetric(12, 0)),
             )
             .show(ctx, |ui| {
-                let status = self.docker.status.lock().unwrap().clone();
+                let status = self.docker.status.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 panels::render_sidebar(ui, &mut self.active_tab, &mut self.config, &status);
             });
 
@@ -362,13 +362,13 @@ impl eframe::App for DockStackApp {
 
                                 match self.active_tab {
                                     Tab::Dashboard => {
-                                        let status = self.docker.status.lock().unwrap().clone();
+                                        let status = self.docker.status.lock().unwrap_or_else(|e| e.into_inner()).clone();
                                         panels::render_dashboard(
                                             ui,
                                             &mut self.config,
                                             &status,
                                             &self.sys_stats,
-                                            &self.docker.containers.lock().unwrap(),
+                                            &self.docker.containers.lock().unwrap_or_else(|e| e.into_inner()),
                                             self.docker_available,
                                         );
                                     }
@@ -377,18 +377,18 @@ impl eframe::App for DockStackApp {
                                         panels::render_services(
                                             ui,
                                             &mut self.config,
-                                            &self.docker.containers.lock().unwrap(),
+                                            &self.docker.containers.lock().unwrap_or_else(|e| e.into_inner()),
                                         );
                                     }
                                     Tab::Containers => {
                                         panels::render_containers(
                                             ui,
-                                            &self.docker.containers.lock().unwrap(),
+                                            &self.docker.containers.lock().unwrap_or_else(|e| e.into_inner()),
                                         );
                                     }
                                     Tab::Logs => {
                                         let mut clear = false;
-                                        let mut logs_guard = self.docker.logs.lock().unwrap();
+                                        let mut logs_guard = self.docker.logs.lock().unwrap_or_else(|e| e.into_inner());
                                         panels::render_logs(
                                             ui,
                                             logs_guard.make_contiguous(),
@@ -400,7 +400,7 @@ impl eframe::App for DockStackApp {
                                     }
                                     Tab::Terminal => {
                                         let mut term_lines_guard =
-                                            self.terminal.output_lines.lock().unwrap();
+                                            self.terminal.output_lines.lock().unwrap_or_else(|e| e.into_inner());
                                         let term_lines = term_lines_guard.make_contiguous();
                                         let mut send = false;
                                         let mut clear = false;
@@ -504,7 +504,7 @@ impl eframe::App for DockStackApp {
         self.config.save();
 
         // Stop running Docker containers if services are active
-        let status = self.docker.status.lock().unwrap().clone();
+        let status = self.docker.status.lock().unwrap_or_else(|e| e.into_inner()).clone();
         if matches!(status, ServiceStatus::Running | ServiceStatus::Starting) {
             log::info!("Stopping running Docker containers...");
             if let Some(project) = self.config.active_project() {

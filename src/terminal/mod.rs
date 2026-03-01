@@ -39,7 +39,7 @@ impl EmbeddedTerminal {
         let master_writer = self.master_writer.clone();
         let running = self.running.clone();
 
-        *running.lock().unwrap() = true;
+        *running.lock().unwrap_or_else(|e| e.into_inner()) = true;
 
         thread::spawn(move || {
             let pty_system = native_pty_system();
@@ -52,7 +52,7 @@ impl EmbeddedTerminal {
             }) {
                 Ok(p) => p,
                 Err(e) => {
-                    *running.lock().unwrap() = false;
+                    *running.lock().unwrap_or_else(|e| e.into_inner()) = false;
                     tx.send(TerminalEvent::Error(format!("Failed to open PTY: {}", e)))
                         .ok();
                     return;
@@ -72,7 +72,7 @@ impl EmbeddedTerminal {
             let mut child: Box<dyn Child + Send> = match pair.slave.spawn_command(cmd) {
                 Ok(c) => c,
                 Err(e) => {
-                    *running.lock().unwrap() = false;
+                    *running.lock().unwrap_or_else(|e| e.into_inner()) = false;
                     tx.send(TerminalEvent::Error(format!(
                         "Failed to spawn shell: {}",
                         e
@@ -87,7 +87,7 @@ impl EmbeddedTerminal {
 
             // Set up writer
             let writer = pair.master.take_writer().unwrap();
-            *master_writer.lock().unwrap() = Some(writer);
+            *master_writer.lock().unwrap_or_else(|e| e.into_inner()) = Some(writer);
 
             // Reader thread
             let mut reader = pair.master.try_clone_reader().unwrap();
@@ -99,7 +99,7 @@ impl EmbeddedTerminal {
                 let mut buffer = [0u8; 4096];
                 let mut line_buffer = String::new();
                 loop {
-                    if !*running_out.lock().unwrap() {
+                    if !*running_out.lock().unwrap_or_else(|e| e.into_inner()) {
                         break;
                     }
                     match reader.read(&mut buffer) {
@@ -113,7 +113,7 @@ impl EmbeddedTerminal {
                                     line_buffer.split('\n').map(|s| s.to_string()).collect();
                                 line_buffer = lines.pop().unwrap_or_default(); // Keep the last partial line
 
-                                let mut l = lines_out.lock().unwrap();
+                                let mut l = lines_out.lock().unwrap_or_else(|e| e.into_inner());
                                 for line in lines {
                                     let cleaned = line.replace("\r", "");
                                     if !cleaned.trim().is_empty() || line.len() > 2 {
@@ -136,11 +136,11 @@ impl EmbeddedTerminal {
             // Wait for exit
             match child.wait() {
                 Ok(_status) => {
-                    *running.lock().unwrap() = false;
+                    *running.lock().unwrap_or_else(|e| e.into_inner()) = false;
                     tx.send(TerminalEvent::Exited(0)).ok();
                 }
                 Err(e) => {
-                    *running.lock().unwrap() = false;
+                    *running.lock().unwrap_or_else(|e| e.into_inner()) = false;
                     tx.send(TerminalEvent::Error(format!(
                         "Shell exited with error: {}",
                         e
@@ -152,7 +152,7 @@ impl EmbeddedTerminal {
     }
 
     pub fn send_input(&self, input: &str) {
-        if let Some(ref mut writer) = *self.master_writer.lock().unwrap() {
+        if let Some(ref mut writer) = *self.master_writer.lock().unwrap_or_else(|e| e.into_inner()) {
             let data = if input.ends_with('\n') {
                 input.to_string()
             } else {
@@ -164,6 +164,6 @@ impl EmbeddedTerminal {
     }
 
     pub fn is_running(&self) -> bool {
-        *self.running.lock().unwrap()
+        *self.running.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
