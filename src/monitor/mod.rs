@@ -43,7 +43,7 @@ pub struct ResourceMonitor {
 
 impl ResourceMonitor {
     pub fn new() -> Self {
-        let (event_tx, event_rx) = crossbeam_channel::unbounded();
+        let (event_tx, event_rx) = crossbeam_channel::bounded(1000);
         Self {
             system_stats: Arc::new(Mutex::new(SystemStats::default())),
             container_stats: Arc::new(Mutex::new(Vec::new())),
