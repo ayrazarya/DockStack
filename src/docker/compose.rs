@@ -420,6 +420,7 @@ fn write_nginx_config(project: &ProjectConfig) -> std::io::Result<()> {
         }
     }
 
+    let safe_domain = project.domain.chars().filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-').collect::<String>();
     let config = if project.ssl_enabled {
         format!(
             r#"{}server {{
@@ -450,7 +451,7 @@ server {{
     }}
 }}
 "#,
-            MANAGED_HEADER, project.domain, project.domain
+            MANAGED_HEADER, safe_domain, safe_domain
         )
     } else {
         format!(
@@ -473,7 +474,7 @@ server {{
     }}
 }}
 "#,
-            MANAGED_HEADER, project.domain
+            MANAGED_HEADER, safe_domain
         )
     };
 
@@ -500,6 +501,7 @@ fn write_apache_config(project: &ProjectConfig) -> std::io::Result<()> {
         }
     }
 
+    let safe_domain = project.domain.chars().filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-').collect::<String>();
     // Basic Apache 2.4 config with DirectoryIndex and .htaccess enabled
     let mut config = format!(
         r#"{}
@@ -507,7 +509,7 @@ ServerRoot "/usr/local/apache2"
 Listen 80
 ServerName {}
 "#,
-        MANAGED_HEADER, project.domain
+        MANAGED_HEADER, safe_domain
     );
     config.push_str(
         r#"
