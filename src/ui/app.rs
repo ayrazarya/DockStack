@@ -501,6 +501,8 @@ impl eframe::App for DockStackApp {
 
         // Stop polling system and docker stats early
         self.monitor.stop();
+        self.terminal.stop();
+        self.docker.wait_all();
 
         // Save current configuration to disk
         log::info!("Saving configuration...");

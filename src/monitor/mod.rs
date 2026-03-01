@@ -39,6 +39,8 @@ pub struct ResourceMonitor {
     pub event_tx: Sender<MonitorEvent>,
     pub event_rx: Receiver<MonitorEvent>,
     running: Arc<Mutex<bool>>,
+    sys_thread: Arc<Mutex<Option<thread::JoinHandle<()>>>>,
+    cont_thread: Arc<Mutex<Option<thread::JoinHandle<()>>>>,
 }
 
 impl ResourceMonitor {
@@ -52,6 +54,8 @@ impl ResourceMonitor {
             event_tx,
             event_rx,
             running: Arc::new(Mutex::new(false)),
+            sys_thread: Arc::new(Mutex::new(None)),
+            cont_thread: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -72,7 +76,7 @@ impl ResourceMonitor {
         let tx = self.event_tx.clone();
         let running_sys = self.running.clone();
 
-        thread::spawn(move || {
+        let sys_handle = thread::spawn(move || {
             let mut sys = System::new_all();
             while *running_sys.lock().unwrap() {
                 sys.refresh_cpu_usage();
@@ -115,13 +119,14 @@ impl ResourceMonitor {
                 thread::sleep(Duration::from_secs(1));
             }
         });
+        *self.sys_thread.lock().unwrap() = Some(sys_handle);
 
         // Container stats thread
         let container_stats = self.container_stats.clone();
         let tx2 = self.event_tx.clone();
         let running_cont = self.running.clone();
 
-        thread::spawn(move || {
+        let cont_handle = thread::spawn(move || {
             while *running_cont.lock().unwrap() {
                 let output = Command::new("docker")
                     .args([
@@ -157,10 +162,17 @@ impl ResourceMonitor {
                 thread::sleep(Duration::from_secs(2));
             }
         });
+        *self.cont_thread.lock().unwrap() = Some(cont_handle);
     }
 
     pub fn stop(&self) {
         *self.running.lock().unwrap() = false;
+        if let Some(h) = self.sys_thread.lock().unwrap().take() {
+            let _ = h.join();
+        }
+        if let Some(h) = self.cont_thread.lock().unwrap().take() {
+            let _ = h.join();
+        }
     }
 
     pub fn is_running(&self) -> bool {
