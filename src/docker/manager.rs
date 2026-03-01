@@ -44,9 +44,27 @@ pub struct DockerManager {
     pub containers: Arc<Mutex<Vec<ContainerInfo>>>,
     pub docker_available: Arc<Mutex<bool>>,
     pub use_compose_plugin: Arc<Mutex<bool>>,
+    pub background_tasks: Arc<Mutex<Vec<std::thread::JoinHandle<()>>>>,
 }
 
 impl DockerManager {
+    pub fn spawn_task<F>(&self, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let handle = std::thread::spawn(f);
+        let mut tasks = self.background_tasks.lock().unwrap();
+        tasks.retain(|h| !h.is_finished());
+        tasks.push(handle);
+    }
+
+    pub fn wait_all(&self) {
+        let mut tasks = self.background_tasks.lock().unwrap();
+        for h in tasks.drain(..) {
+            let _ = h.join();
+        }
+    }
+
     pub fn new() -> Self {
         let (event_tx, event_rx) = crossbeam_channel::unbounded();
         Self {
@@ -57,6 +75,7 @@ impl DockerManager {
             containers: Arc::new(Mutex::new(Vec::new())),
             docker_available: Arc::new(Mutex::new(false)),
             use_compose_plugin: Arc::new(Mutex::new(false)),
+            background_tasks: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -65,7 +84,7 @@ impl DockerManager {
         let available = self.docker_available.clone();
         let plugin = self.use_compose_plugin.clone();
 
-        thread::spawn(move || {
+        self.spawn_task(move || {
             let result = Command::new("docker").arg("info").output();
             let is_available = result.map(|o| o.status.success()).unwrap_or(false);
             *available.lock().unwrap() = is_available;
@@ -112,7 +131,7 @@ impl DockerManager {
 
         let use_compose_plugin = self.use_compose_plugin.clone();
 
-        thread::spawn(move || {
+        self.spawn_task(move || {
             // Generate and write compose file
             match compose::write_compose_file(&project) {
                 Ok(compose_path) => {
@@ -235,7 +254,7 @@ impl DockerManager {
 
         let use_compose_plugin = self.use_compose_plugin.clone();
 
-        thread::spawn(move || {
+        self.spawn_task(move || {
             let msg = "[DockStack] Stopping services...".to_string();
             logs.lock().unwrap().push_back(msg.clone());
             tx.send(DockerEvent::Log(msg)).ok();
@@ -330,7 +349,7 @@ impl DockerManager {
 
         let use_compose_plugin = self.use_compose_plugin.clone();
 
-        thread::spawn(move || {
+        self.spawn_task(move || {
             let msg = "[DockStack] Restarting services...".to_string();
             logs.lock().unwrap().push_back(msg.clone());
             tx.send(DockerEvent::Log(msg)).ok();
@@ -409,7 +428,7 @@ impl DockerManager {
         let tx = self.event_tx.clone();
         let containers = self.containers.clone();
 
-        thread::spawn(move || {
+        self.spawn_task(move || {
             // Using docker ps with filter is more reliable than docker compose ps
             // across different versions and environments.
             let output = Command::new("docker")
@@ -461,7 +480,7 @@ impl DockerManager {
 
         let use_compose_plugin = self.use_compose_plugin.clone();
 
-        thread::spawn(move || {
+        self.spawn_task(move || {
             // Detect compose
             let use_plugin = *use_compose_plugin.lock().unwrap();
             let (prog, args) = if use_plugin {

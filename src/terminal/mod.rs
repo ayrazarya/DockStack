@@ -19,6 +19,7 @@ pub struct EmbeddedTerminal {
     pub event_rx: Receiver<TerminalEvent>,
     master_writer: Arc<Mutex<Option<Box<dyn Write + Send>>>>,
     running: Arc<Mutex<bool>>,
+    main_thread: Mutex<Option<thread::JoinHandle<()>>>,
 }
 
 impl EmbeddedTerminal {
@@ -30,6 +31,7 @@ impl EmbeddedTerminal {
             event_rx,
             master_writer: Arc::new(Mutex::new(None)),
             running: Arc::new(Mutex::new(false)),
+            main_thread: Mutex::new(None),
         }
     }
 
@@ -41,7 +43,7 @@ impl EmbeddedTerminal {
 
         *running.lock().unwrap() = true;
 
-        thread::spawn(move || {
+        let handle = thread::spawn(move || {
             let pty_system = native_pty_system();
 
             let pair = match pty_system.openpty(PtySize {
@@ -95,7 +97,7 @@ impl EmbeddedTerminal {
             let lines_out = output_lines.clone();
             let running_out = running.clone();
 
-            thread::spawn(move || {
+            let reader_handle = thread::spawn(move || {
                 let mut buffer = [0u8; 4096];
                 let mut line_buffer = String::new();
                 loop {
@@ -148,7 +150,10 @@ impl EmbeddedTerminal {
                     .ok();
                 }
             }
+            
+            let _ = reader_handle.join();
         });
+        *self.main_thread.lock().unwrap() = Some(handle);
     }
 
     pub fn send_input(&self, input: &str) {
@@ -165,5 +170,13 @@ impl EmbeddedTerminal {
 
     pub fn is_running(&self) -> bool {
         *self.running.lock().unwrap()
+    }
+
+    pub fn stop(&self) {
+        *self.running.lock().unwrap() = false;
+        self.send_input("exit\n");
+        if let Some(h) = self.main_thread.lock().unwrap().take() {
+            let _ = h.join();
+        }
     }
 }
