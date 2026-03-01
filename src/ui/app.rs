@@ -499,6 +499,9 @@ impl eframe::App for DockStackApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         log::info!("DockStack shutting down gracefully...");
 
+        // Stop polling system and docker stats early
+        self.monitor.stop();
+
         // Save current configuration to disk
         log::info!("Saving configuration...");
         self.config.save();
