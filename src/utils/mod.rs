@@ -67,6 +67,4 @@ pub fn load_icon() -> Option<egui::IconData> {
         }
     }
 }
-pub fn is_port_available(port: u16) -> bool {
-    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
-}
+
