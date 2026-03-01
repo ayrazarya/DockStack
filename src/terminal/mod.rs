@@ -23,7 +23,7 @@ pub struct EmbeddedTerminal {
 
 impl EmbeddedTerminal {
     pub fn new() -> Self {
-        let (event_tx, event_rx) = crossbeam_channel::unbounded();
+        let (event_tx, event_rx) = crossbeam_channel::bounded(1000);
         Self {
             output_lines: Arc::new(Mutex::new(VecDeque::new())),
             event_tx,

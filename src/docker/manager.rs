@@ -48,7 +48,7 @@ pub struct DockerManager {
 
 impl DockerManager {
     pub fn new() -> Self {
-        let (event_tx, event_rx) = crossbeam_channel::unbounded();
+        let (event_tx, event_rx) = crossbeam_channel::bounded(5000);
         Self {
             event_tx,
             event_rx,
