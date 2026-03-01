@@ -36,3 +36,8 @@ default_config.toml
 
 # Project specific
 /docker-compose*.yml
+
+# Agent artifacts
+.agent/
+issues/
+
