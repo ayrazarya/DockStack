@@ -416,7 +416,7 @@ impl DockerManager {
                 .arg("ps")
                 .arg("-a")
                 .arg("--filter")
-                .arg(format!("label=com.docker.compose.project={}", project_id))
+                .arg(format!("name=dockstack_{}_", project_id))
                 .arg("--format")
                 .arg("{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}|{{.State}}")
                 .output();
