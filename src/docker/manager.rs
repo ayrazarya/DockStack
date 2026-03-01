@@ -171,6 +171,16 @@ impl DockerManager {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
 
+            // Lazily ensure API connection versions match the running daemon
+            if let Ok(output) = Command::new("docker").args(["version", "--format", "{{.Server.APIVersion}}"]).output() {
+                if output.status.success() {
+                    let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !ver.is_empty() {
+                        cmd.env("DOCKER_API_VERSION", ver);
+                    }
+                }
+            }
+
             match cmd.spawn() {
                 Ok(mut child) => {
                     let mut stderr_content = String::new();
@@ -286,6 +296,16 @@ impl DockerManager {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
 
+            // Lazily ensure API connection versions match the running daemon
+            if let Ok(output) = Command::new("docker").args(["version", "--format", "{{.Server.APIVersion}}"]).output() {
+                if output.status.success() {
+                    let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !ver.is_empty() {
+                        cmd.env("DOCKER_API_VERSION", ver);
+                    }
+                }
+            }
+
             match cmd.spawn() {
                 Ok(mut child) => {
                     if let Some(stderr) = child.stderr.take() {
@@ -349,6 +369,15 @@ impl DockerManager {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
 
+        if let Ok(output) = Command::new("docker").args(["version", "--format", "{{.Server.APIVersion}}"]).output() {
+            if output.status.success() {
+                let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !ver.is_empty() {
+                    cmd.env("DOCKER_API_VERSION", ver);
+                }
+            }
+        }
+
         let _ = cmd.status();
     }
 
@@ -382,12 +411,22 @@ impl DockerManager {
                 ("docker-compose", vec!["down"])
             };
 
-            let stop = Command::new(prog_down)
-                .args(&args_down)
-                .current_dir(&project.directory)
-                .output();
+            let mut stop = Command::new(prog_down);
+            stop.args(&args_down)
+                .current_dir(&project.directory);
+                
+            if let Ok(output) = Command::new("docker").args(["version", "--format", "{{.Server.APIVersion}}"]).output() {
+                if output.status.success() {
+                    let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !ver.is_empty() {
+                        stop.env("DOCKER_API_VERSION", ver.clone());
+                    }
+                }
+            }
+            
+            let stop_out = stop.output();
 
-            if let Err(e) = stop {
+            if let Err(e) = stop_out {
                 let msg = format!("[DockStack] Stop failed during restart: {}", e);
                 tx.send(DockerEvent::Error(msg)).ok();
                 return;
@@ -408,13 +447,21 @@ impl DockerManager {
             } else {
                 ("docker-compose", vec!["up", "-d", "--remove-orphans"])
             };
+            
+            let mut up = Command::new(prog_up);
+            up.args(&args_up)
+              .current_dir(&project.directory);
+              
+            if let Ok(output) = Command::new("docker").args(["version", "--format", "{{.Server.APIVersion}}"]).output() {
+                if output.status.success() {
+                    let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !ver.is_empty() {
+                        up.env("DOCKER_API_VERSION", ver);
+                    }
+                }
+            }
 
-            let start = Command::new(prog_up)
-                .args(&args_up)
-                .current_dir(&project.directory)
-                .output();
-
-            match start {
+            match up.output() {
                 Ok(output) => {
                     if output.status.success() {
                         *status.lock().unwrap_or_else(|e| e.into_inner()) = ServiceStatus::Running;
