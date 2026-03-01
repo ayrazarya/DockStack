@@ -897,7 +897,7 @@ pub fn render_services(ui: &mut egui::Ui, config: &mut AppConfig, containers: &[
 
                                                                   // Column 4: Port
                                                                   ui.vertical(|ui| {
-                                                                      let is_available = crate::utils::is_port_available(svc.port);
+                                                                      let is_available = crate::port_scanner::PortScanner::is_port_available(svc.port);
                                                                       ui.horizontal(|ui| {
                                                                           ui.label(RichText::new("Host Port").size(11.0).color(COLOR_TEXT_DIM));
                                                                           ui.add_space(4.0);
