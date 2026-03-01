@@ -6,7 +6,6 @@ use std::collections::VecDeque;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServiceStatus {
