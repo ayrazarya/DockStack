@@ -503,9 +503,9 @@ impl eframe::App for DockStackApp {
         log::info!("Saving configuration...");
         self.config.save();
 
-        // Stop running Docker containers if services are active
+        // Stop running Docker containers if services are active and the setting is enabled
         let status = self.docker.status.lock().unwrap().clone();
-        if matches!(status, ServiceStatus::Running | ServiceStatus::Starting) {
+        if self.config.stop_on_exit && matches!(status, ServiceStatus::Running | ServiceStatus::Starting) {
             log::info!("Stopping running Docker containers...");
             if let Some(project) = self.config.active_project() {
                 self.docker.stop_services_sync(project);

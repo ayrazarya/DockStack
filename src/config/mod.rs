@@ -12,6 +12,8 @@ pub struct AppConfig {
     pub compose_path: String,
     pub theme: ThemeConfig,
     pub window: WindowConfig,
+    #[serde(default)]
+    pub stop_on_exit: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,6 +69,7 @@ impl Default for AppConfig {
                 height: 800.0,
                 minimize_to_tray: true,
             },
+            stop_on_exit: false,
         }
     }
 }
